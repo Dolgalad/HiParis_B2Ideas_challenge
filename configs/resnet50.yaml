@@ -9,7 +9,8 @@ data:
 model:
   name: resnet50
   pretrained: true
-  dropout: 0.2
+  dropout: 0.5
+  freeze_backbone: true
 
 training:
   epochs: 20

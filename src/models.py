@@ -7,6 +7,31 @@ import torch.nn as nn
 from torchvision import models
 
 
+#class ResNetMultiLabelClassifier(nn.Module):
+#    def __init__(
+#        self,
+#        num_classes: int,
+#        backbone_name: str = "resnet50",
+#        pretrained: bool = True,
+#        dropout: float = 0.2,
+#    ):
+#        super().__init__()
+#
+#        if backbone_name != "resnet50":
+#            raise ValueError(f"Unsupported ResNet backbone: {backbone_name}")
+#
+#        weights = models.ResNet50_Weights.DEFAULT if pretrained else None
+#        self.backbone = models.resnet50(weights=weights)
+#
+#        in_features = self.backbone.fc.in_features
+#        self.backbone.fc = nn.Sequential(
+#            nn.Dropout(dropout),
+#            nn.Linear(in_features, num_classes),
+#        )
+#
+#    def forward(self, images: torch.Tensor) -> torch.Tensor:
+#        return self.backbone(images)
+
 class ResNetMultiLabelClassifier(nn.Module):
     def __init__(
         self,
@@ -14,6 +39,7 @@ class ResNetMultiLabelClassifier(nn.Module):
         backbone_name: str = "resnet50",
         pretrained: bool = True,
         dropout: float = 0.2,
+        freeze_backbone: bool = False,
     ):
         super().__init__()
 
@@ -23,14 +49,19 @@ class ResNetMultiLabelClassifier(nn.Module):
         weights = models.ResNet50_Weights.DEFAULT if pretrained else None
         self.backbone = models.resnet50(weights=weights)
 
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(in_features, num_classes),
         )
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        return self.backbone(images)
+        # Make sure the classification head is trainable.
+        for param in self.backbone.fc.parameters():
+            param.requires_grad = True
 
 
 class CLIPPosterClassifier(nn.Module):
@@ -86,12 +117,21 @@ def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
     model_config = config["model"]
     model_name = model_config["name"]
 
+    #if model_name == "resnet50":
+    #    return ResNetMultiLabelClassifier(
+    #        num_classes=num_classes,
+    #        backbone_name="resnet50",
+    #        pretrained=model_config.get("pretrained", True),
+    #        dropout=model_config.get("dropout", 0.2),
+    #    )
+
     if model_name == "resnet50":
         return ResNetMultiLabelClassifier(
             num_classes=num_classes,
             backbone_name="resnet50",
             pretrained=model_config.get("pretrained", True),
             dropout=model_config.get("dropout", 0.2),
+            freeze_backbone=model_config.get("freeze_backbone", False),
         )
 
     if model_name == "clip":
