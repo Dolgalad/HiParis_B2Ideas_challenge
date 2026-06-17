@@ -65,7 +65,15 @@ class Trainer:
         self.device = torch.device(requested_device)
         self.model.to(self.device)
 
-        self.criterion = nn.BCEWithLogitsLoss()
+        use_pos_weight = training_config.get("use_pos_weight", False)
+
+        if use_pos_weight:
+            pos_weight = self._compute_pos_weight()
+            self.criterion = nn. BCEWithLogitsLoss(pos_weight=pos_weight)
+            for genre, idx in self.genre_to_idx.items():
+                self.writer.add_scalar(f"ClassWeight/{genre}", pos_weight[idx].item(), 0)
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
 
         self.optimizer = self._build_optimizer()
         self.scheduler = self._build_scheduler()
@@ -81,6 +89,29 @@ class Trainer:
             self.best_val_metric = float("inf")
         else:
             self.best_val_metric = -float("inf")
+
+    def _compute_pos_weight(self) -> torch.Tensor:
+        num_classes = len(self.genre_to_idx)
+        positive_counts = torch.zeros(num_classes, dtype=torch.float32)
+    
+        dataset = self.train_loader.dataset
+    
+        for idx in range(len(dataset)):
+            target = dataset.encode_genres(
+                dataset.df.iloc[idx][dataset.genre_column]
+            )
+            positive_counts += target
+    
+        num_samples = len(dataset)
+        negative_counts = num_samples - positive_counts
+    
+        pos_weight = negative_counts / positive_counts.clamp(min=1.0)
+    
+        max_pos_weight = self.config["training"].get("max_pos_weight", None)
+        if max_pos_weight is not None:
+            pos_weight = pos_weight.clamp(max=float(max_pos_weight))
+    
+        return pos_weight.to(self.device)
 
     def _build_optimizer(self):
         training_config = self.config["training"]
@@ -280,9 +311,6 @@ class Trainer:
             self.writer.add_scalar("Metrics/val_micro_f1", val_metrics["micro_f1"], epoch)
             self.writer.add_scalar("Metrics/val_macro_f1", val_metrics["macro_f1"], epoch)
             self.writer.add_scalar("Metrics/val_map", val_metrics["map"], epoch)
-
-            latest_path = self.output_dir / "latest.pt"
-            self.save_checkpoint(latest_path, epoch, val_metrics)
 
             save_best_metric = self.config["training"].get("save_best_metric", "loss")
             save_best_metric_sense = self.config["training"].get("save_best_metric_sense", "min")

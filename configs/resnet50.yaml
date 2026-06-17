@@ -22,3 +22,5 @@ training:
   scheduler: cosine
   min_lr: 0.000001
   log_every_n_steps: 20
+  use_pos_weight: true
+  max_pos_weight: 10.0
