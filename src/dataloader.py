@@ -31,6 +31,7 @@ def create_dataloaders(
     image_size: int = 224,
     batch_size: int = 32,
     num_workers: int = 4,
+    use_cache: bool = True,
 ):
     data_dir = Path(data_dir)
 
@@ -38,24 +39,47 @@ def create_dataloaders(
     val_csv = data_dir / "movies_val.csv"
     test_csv = data_dir / "movies_test.csv"
 
+    cache_dir = data_dir / "cache" / f"posters_{image_size}"
+
     genre_to_idx = build_genre_mapping(train_csv)
 
     train_dataset = MoviePosterDataset(
         csv_path=train_csv,
         genre_to_idx=genre_to_idx,
-        transform=get_image_transform("train", image_size=image_size),
+        transform=get_image_transform(
+            "train",
+            image_size=image_size,
+            include_base=not use_cache,
+        ),
+        cache_dir=cache_dir / "train",
+        cache_base_images=use_cache,
+        image_size=image_size,
     )
 
     val_dataset = MoviePosterDataset(
         csv_path=val_csv,
         genre_to_idx=genre_to_idx,
-        transform=get_image_transform("val", image_size=image_size),
+        transform=get_image_transform(
+            "val",
+            image_size=image_size,
+            include_base=not use_cache,
+        ),
+        cache_dir=cache_dir / "val",
+        cache_base_images=use_cache,
+        image_size=image_size,
     )
 
     test_dataset = MoviePosterDataset(
         csv_path=test_csv,
         genre_to_idx=genre_to_idx,
-        transform=get_image_transform("test", image_size=image_size),
+        transform=get_image_transform(
+            "test",
+            image_size=image_size,
+            include_base=not use_cache,
+        ),
+        cache_dir=cache_dir / "test",
+        cache_base_images=use_cache,
+        image_size=image_size,
     )
 
     train_loader = DataLoader(
@@ -86,7 +110,6 @@ def create_dataloaders(
     )
 
     return train_loader, val_loader, test_loader, genre_to_idx
-
 
 if __name__ == "__main__":
     train_loader, val_loader, test_loader, genre_to_idx = create_dataloaders(

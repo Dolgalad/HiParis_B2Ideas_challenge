@@ -57,22 +57,18 @@ class PadToSquare:
 def get_image_transform(
     split: str,
     image_size: int = 224,
+    include_base: bool = True,
 ) -> transforms.Compose:
-    """
-    Return image transforms for train/val/test.
+    base_transforms = []
 
-    I would keep train augmentation conservative for posters because aggressive
-    transforms can damage text and layout cues.
-    """
-    base_transforms = [
-        PadToSquare(fill=0),
-        transforms.Resize((image_size, image_size)),
-    ]
+    if include_base:
+        base_transforms = [
+            PadToSquare(fill=0),
+            transforms.Resize((image_size, image_size)),
+        ]
 
     if split == "train":
         augmentation = [
-            # Be careful with horizontal flips: they mirror text.
-            # I would start without flips, then test them later.
             transforms.RandomApply(
                 [
                     transforms.ColorJitter(
@@ -100,12 +96,7 @@ def get_image_transform(
         base_transforms + augmentation + tensor_transforms
     )
 
-
 class MoviePosterDataset(Dataset):
-    """
-    Dataset for multi-label movie genre classification from poster images.
-    """
-
     def __init__(
         self,
         csv_path: str | Path,
@@ -114,6 +105,9 @@ class MoviePosterDataset(Dataset):
         poster_path_column: str = "poster_path",
         title_column: str = "Title",
         genre_column: str = "Genre",
+        cache_dir: str | Path | None = None,
+        cache_base_images: bool = False,
+        image_size: int = 224,
     ):
         self.csv_path = Path(csv_path)
         self.df = pd.read_csv(self.csv_path)
@@ -122,6 +116,18 @@ class MoviePosterDataset(Dataset):
         self.title_column = title_column
         self.genre_column = genre_column
         self.transform = transform
+
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
+        self.cache_base_images = cache_base_images
+        self.image_size = image_size
+
+        if self.cache_dir is not None:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        self.base_transform = transforms.Compose([
+            PadToSquare(fill=0),
+            transforms.Resize((image_size, image_size)),
+        ])
 
         if poster_path_column not in self.df.columns:
             raise ValueError(
@@ -164,23 +170,40 @@ class MoviePosterDataset(Dataset):
 
         return target
 
-    def __getitem__(self, idx: int) -> dict:
-        row = self.df.iloc[idx]
+    def _cache_path_for_image(self, image_path: Path) -> Path:
+        key = hashlib.md5(str(image_path.resolve()).encode("utf-8")).hexdigest()
+        return self.cache_dir / f"{key}_{self.image_size}.jpg"
 
-        image_path = Path(row[self.poster_path_column])
+    def _load_base_image(self, image_path: Path) -> Image.Image:
+        if not self.cache_base_images or self.cache_dir is None:
+            image = Image.open(image_path).convert("RGB")
+            return self.base_transform(image)
+
+        cached_path = self._cache_path_for_image(image_path)
+
+        if cached_path.exists():
+            return Image.open(cached_path).convert("RGB")
 
         image = Image.open(image_path).convert("RGB")
+        image = self.base_transform(image)
+        image.save(cached_path, quality=95)
+
+        return image
+
+    def __getitem__(self, idx: int) -> dict:
+        row = self.df.iloc[idx]
+        image_path = Path(row[self.poster_path_column])
+
+        image = self._load_base_image(image_path)
 
         if self.transform is not None:
             image = self.transform(image)
 
         target = self.encode_genres(row[self.genre_column])
 
-        sample = {
+        return {
             "image": image,
             "target": target,
             "poster_path": str(image_path),
             "title": row[self.title_column] if self.title_column in row else "",
         }
-
-        return sample
