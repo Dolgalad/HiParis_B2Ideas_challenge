@@ -1,0 +1,13 @@
+name: hiparis
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pyyaml
+  - numpy
+  - pillow
+  - scikit-learn
+  - tqdm
+  - matplotlib
+  - pandas
+prefix: /home/crazycat/.local/miniconda3/envs/hiparis
