@@ -62,6 +62,8 @@ class ResNetMultiLabelClassifier(nn.Module):
         # Make sure the classification head is trainable.
         for param in self.backbone.fc.parameters():
             param.requires_grad = True
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        return self.backbone(images)
 
 
 class CLIPPosterClassifier(nn.Module):
