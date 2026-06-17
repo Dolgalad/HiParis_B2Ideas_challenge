@@ -1,0 +1,8 @@
+```gitignore
+.venv/
+__pycache__/
+*.pyc
+
+# data
+data/poster_cache/
+data/movies_*.csv
