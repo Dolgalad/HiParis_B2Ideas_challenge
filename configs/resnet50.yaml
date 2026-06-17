@@ -3,8 +3,8 @@ seed: 2026
 data:
   data_dir: /data1/schulz/hiparis/data
   image_size: 224
-  batch_size: 16
-  num_workers: 4
+  batch_size: 64
+  num_workers: 2
 
 model:
   name: resnet50
@@ -17,4 +17,5 @@ training:
   weight_decay: 0.00001
   device: auto
   output_dir: checkpoints/resnet50
-  save_best_metric: val_loss
+  save_best_metric: map
+  save_best_metric_sense: max

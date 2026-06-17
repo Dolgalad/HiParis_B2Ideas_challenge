@@ -8,6 +8,9 @@ import torch.nn as nn
 from sklearn.metrics import f1_score, average_precision_score
 from tqdm import tqdm
 
+import csv
+from torch.utils.tensorboard import SummaryWriter
+
 
 def move_batch_to_device(batch: dict, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     images = batch["image"].to(device, non_blocking=True)
@@ -69,7 +72,14 @@ class Trainer:
         self.output_dir = Path(training_config["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.best_val_loss = float("inf")
+        self.history_path = self.output_dir / "history.csv"
+        self.writer = SummaryWriter(log_dir=self.output_dir / "tensorboard")
+        self.global_step = 0
+        
+        if self.config["training"].get("save_best_metric_sense", "min")=="min":
+            self.best_val_metric = float("inf")
+        else:
+            self.best_val_metric = -float("inf")
 
     def _build_optimizer(self):
         training_config = self.config["training"]
@@ -130,6 +140,20 @@ class Trainer:
 
             loss.backward()
             self.optimizer.step()
+
+            self.global_step += 1
+
+            log_every_n_steps = self.config["training"].get("log_every_n_steps", 1)
+            if self.global_step % log_every_n_steps == 0:
+                self.writer.add_scalar("Loss/train_step", loss.item(), self.global_step)
+            
+                for idx, param_group in enumerate(self.optimizer.param_groups):
+                    group_name = param_group.get("name", f"group_{idx}")
+                    self.writer.add_scalar(
+                        f"LR/{group_name}",
+                        param_group["lr"],
+                        self.global_step,
+                    )
 
             total_loss += loss.item() * images.size(0)
 
@@ -221,11 +245,67 @@ class Trainer:
                 f"val_map={val_metrics['map']:.4f}"
             )
 
+            self.writer.add_scalar("Loss/train_epoch", train_metrics["loss"], epoch)
+            self.writer.add_scalar("Loss/val_epoch", val_metrics["loss"], epoch)
+            
+            self.writer.add_scalar("Metrics/train_micro_f1", train_metrics["micro_f1"], epoch)
+            self.writer.add_scalar("Metrics/train_macro_f1", train_metrics["macro_f1"], epoch)
+            self.writer.add_scalar("Metrics/train_map", train_metrics["map"], epoch)
+            
+            self.writer.add_scalar("Metrics/val_micro_f1", val_metrics["micro_f1"], epoch)
+            self.writer.add_scalar("Metrics/val_macro_f1", val_metrics["macro_f1"], epoch)
+            self.writer.add_scalar("Metrics/val_map", val_metrics["map"], epoch)
+
             latest_path = self.output_dir / "latest.pt"
             self.save_checkpoint(latest_path, epoch, val_metrics)
 
-            if val_metrics["loss"] < self.best_val_loss:
-                self.best_val_loss = val_metrics["loss"]
+            save_best_metric = self.config["training"].get("save_best_metric", "loss")
+            save_best_metric_sense = self.config["training"].get("save_best_metric_sense", "min")
+
+            if (val_metrics[save_best_metric] < self.best_val_metric and save_best_metric_sense=="min") or (val_metrics[save_best_metric] > self.best_val_metric and save_best_metric_sense=="max"):
+                self.best_val_metric = val_metrics[save_best_metric]
                 best_path = self.output_dir / "best.pt"
                 self.save_checkpoint(best_path, epoch, val_metrics)
                 print(f"Saved new best checkpoint to {best_path}")
+    def _get_lrs(self) -> dict[str, float]:
+        lrs = {}
+    
+        for idx, param_group in enumerate(self.optimizer.param_groups):
+            group_name = param_group.get("name", f"group_{idx}")
+            lrs[f"lr_{group_name}"] = param_group["lr"]
+    
+        return lrs
+    
+    
+    def _append_history_row(
+        self,
+        epoch: int,
+        train_metrics: dict[str, float],
+        val_metrics: dict[str, float],
+        checkpoint_metric: float,
+        is_best: bool,
+    ) -> None:
+        row = {
+            "epoch": epoch,
+            "train_loss": train_metrics["loss"],
+            "train_micro_f1": train_metrics["micro_f1"],
+            "train_macro_f1": train_metrics["macro_f1"],
+            "train_map": train_metrics["map"],
+            "val_loss": val_metrics["loss"],
+            "val_micro_f1": val_metrics["micro_f1"],
+            "val_macro_f1": val_metrics["macro_f1"],
+            "val_map": val_metrics["map"],
+            "checkpoint_metric": checkpoint_metric,
+            "is_best": int(is_best),
+            **self._get_lrs(),
+        }
+    
+        write_header = not self.history_path.exists()
+    
+        with open(self.history_path, "a", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=list(row.keys()))
+    
+            if write_header:
+                writer.writeheader()
+    
+            writer.writerow(row)
