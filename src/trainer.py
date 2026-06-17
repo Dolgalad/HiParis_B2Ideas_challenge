@@ -68,6 +68,7 @@ class Trainer:
         self.criterion = nn.BCEWithLogitsLoss()
 
         self.optimizer = self._build_optimizer()
+        self.scheduler = self._build_scheduler()
 
         self.output_dir = Path(training_config["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -105,18 +106,36 @@ class Trainer:
 
             return torch.optim.AdamW(
                 [
-                    {"params": backbone_params, "lr": lr},
-                    {"params": classifier_params, "lr": classifier_lr},
+                    {"params": backbone_params, "lr": lr, "name": "backbone"},
+                    {"params": classifier_params, "lr": classifier_lr, "name": "classifier"},
                 ],
                 weight_decay=weight_decay,
             )
-
         return torch.optim.AdamW(
-            self.model.parameters(),
-            lr=lr,
+            [{"params": self.model.parameters(), "lr": lr, "name": "model"}],
             weight_decay=weight_decay,
         )
-
+    def _build_scheduler(self):
+        training_config = self.config["training"]
+    
+        scheduler_name = training_config.get("scheduler", "none")
+    
+        if scheduler_name is None or scheduler_name == "none":
+            return None
+    
+        if scheduler_name == "cosine":
+            epochs = training_config["epochs"]
+            min_lr = training_config.get("min_lr", 0.0)
+    
+            total_steps = epochs * len(self.train_loader)
+    
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=total_steps,
+                eta_min=min_lr,
+            )
+    
+        raise ValueError(f"Unknown scheduler: {scheduler_name}")
     def train_one_epoch(self, epoch: int) -> dict[str, float]:
         self.model.train()
 
@@ -141,9 +160,12 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
 
+            if self.scheduler is not None:
+                self.scheduler.step()
+
             self.global_step += 1
 
-            log_every_n_steps = self.config["training"].get("log_every_n_steps", 1)
+            log_every_n_steps = self.config["training"].get("log_every_n_steps", 20)
             if self.global_step % log_every_n_steps == 0:
                 self.writer.add_scalar("Loss/train_step", loss.item(), self.global_step)
             
@@ -221,6 +243,9 @@ class Trainer:
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": (
+                self.scheduler.state_dict() if self.scheduler is not None else None
+            ),
             "config": self.config,
             "genre_to_idx": self.genre_to_idx,
             "val_metrics": val_metrics,
@@ -262,11 +287,28 @@ class Trainer:
             save_best_metric = self.config["training"].get("save_best_metric", "loss")
             save_best_metric_sense = self.config["training"].get("save_best_metric_sense", "min")
 
-            if (val_metrics[save_best_metric] < self.best_val_metric and save_best_metric_sense=="min") or (val_metrics[save_best_metric] > self.best_val_metric and save_best_metric_sense=="max"):
-                self.best_val_metric = val_metrics[save_best_metric]
+            checkpoint_metric = val_metrics[save_best_metric]
+
+            is_best = (checkpoint_metric < self.best_val_metric
+                       if save_best_metric_sense == "min"
+                       else checkpoint_metric > self.best_val_metric)
+            latest_path = self.output_dir / "latest.pt"
+            self.save_checkpoint(latest_path, epoch, val_metrics)
+
+            if is_best:
+                self.best_val_metric = checkpoint_metric
                 best_path = self.output_dir / "best.pt"
                 self.save_checkpoint(best_path, epoch, val_metrics)
                 print(f"Saved new best checkpoint to {best_path}")
+
+            self._append_history_row(
+                    epoch=epoch,
+                    train_metrics=train_metrics,
+                    val_metrics=val_metrics,
+                    checkpoint_metric=checkpoint_metric,
+                    is_best=is_best)
+
+        self.writer.close()
     def _get_lrs(self) -> dict[str, float]:
         lrs = {}
     

@@ -19,3 +19,6 @@ training:
   output_dir: checkpoints/resnet50
   save_best_metric: map
   save_best_metric_sense: max
+  scheduler: cosine
+  min_lr: 0.000001
+  log_every_n_steps: 20
