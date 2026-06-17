@@ -1,8 +1,14 @@
 name: hiparis
 channels:
   - defaults
+  - conda-forge
+  - pytorch
+  - nvidia
 dependencies:
   - python=3.11
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
   - pyyaml
   - numpy
   - pillow
@@ -10,4 +16,8 @@ dependencies:
   - tqdm
   - matplotlib
   - pandas
+  - requests
+  - pip
+  - pip:
+    - open-clip-torch
 prefix: /home/crazycat/.local/miniconda3/envs/hiparis
