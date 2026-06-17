@@ -1,17 +1,17 @@
 seed: 2026
 
 data:
-  data_dir: data
-  image_size: 384
-  batch_size: 8
-  num_workers: 4
+  data_dir: /data1/schulz/hiparis/data
+  image_size: 224
+  batch_size: 64
+  num_workers: 2
 
 model:
   name: clip
   clip_model_name: ViT-B-32
   clip_pretrained: openai
-  freeze_backbone: false
-  dropout: 0.2
+  freeze_backbone: true
+  dropout: 0.5
 
 training:
   epochs: 10
@@ -20,4 +20,10 @@ training:
   weight_decay: 0.00001
   device: auto
   output_dir: checkpoints/clip_vit_b32
-  save_best_metric: val_loss
+  save_best_metric: map
+  save_best_metric_sense: max
+  scheduler: cosine
+  min_lr: 0.000001
+  log_every_n_steps: 20
+  use_pos_weight: true
+  max_pos_weight: 10.0
