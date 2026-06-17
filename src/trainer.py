@@ -67,14 +67,6 @@ class Trainer:
 
         use_pos_weight = training_config.get("use_pos_weight", False)
 
-        if use_pos_weight:
-            pos_weight = self._compute_pos_weight()
-            self.criterion = nn. BCEWithLogitsLoss(pos_weight=pos_weight)
-            for genre, idx in self.genre_to_idx.items():
-                self.writer.add_scalar(f"ClassWeight/{genre}", pos_weight[idx].item(), 0)
-        else:
-            self.criterion = nn.BCEWithLogitsLoss()
-
         self.optimizer = self._build_optimizer()
         self.scheduler = self._build_scheduler()
 
@@ -84,7 +76,15 @@ class Trainer:
         self.history_path = self.output_dir / "history.csv"
         self.writer = SummaryWriter(log_dir=self.output_dir / "tensorboard")
         self.global_step = 0
-        
+
+        if use_pos_weight:
+            pos_weight = self._compute_pos_weight()
+            self.criterion = nn. BCEWithLogitsLoss(pos_weight=pos_weight)
+            for genre, idx in self.genre_to_idx.items():
+                self.writer.add_scalar(f"ClassWeight/{genre}", pos_weight[idx].item(), 0)
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
+
         if self.config["training"].get("save_best_metric_sense", "min")=="min":
             self.best_val_metric = float("inf")
         else:
