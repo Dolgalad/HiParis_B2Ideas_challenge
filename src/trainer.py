@@ -87,12 +87,15 @@ class Trainer:
         else:
             self.criterion = nn.BCEWithLogitsLoss()
 
-        # Track best validation metrics per stage
+        # Track best validation metrics per stage and globally
+        # Track best validation metric overall and per stage
         if self.config["training"].get("save_best_metric_sense", "min") == "min":
+            self.best_val_metric = float("inf")
             self.best_stage_metrics = {
                 stage["index"]: float("inf") for stage in self.stages
             }
         else:
+            self.best_val_metric = -float("inf")
             self.best_stage_metrics = {
                 stage["index"]: -float("inf") for stage in self.stages
             }

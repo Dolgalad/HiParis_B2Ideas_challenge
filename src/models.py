@@ -6,31 +6,7 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-
-#class ResNetMultiLabelClassifier(nn.Module):
-#    def __init__(
-#        self,
-#        num_classes: int,
-#        backbone_name: str = "resnet50",
-#        pretrained: bool = True,
-#        dropout: float = 0.2,
-#    ):
-#        super().__init__()
-#
-#        if backbone_name != "resnet50":
-#            raise ValueError(f"Unsupported ResNet backbone: {backbone_name}")
-#
-#        weights = models.ResNet50_Weights.DEFAULT if pretrained else None
-#        self.backbone = models.resnet50(weights=weights)
-#
-#        in_features = self.backbone.fc.in_features
-#        self.backbone.fc = nn.Sequential(
-#            nn.Dropout(dropout),
-#            nn.Linear(in_features, num_classes),
-#        )
-#
-#    def forward(self, images: torch.Tensor) -> torch.Tensor:
-#        return self.backbone(images)
+from .prediction_head import build_prediction_head
 
 class ResNetMultiLabelClassifier(nn.Module):
     def __init__(
@@ -40,6 +16,7 @@ class ResNetMultiLabelClassifier(nn.Module):
         pretrained: bool = True,
         dropout: float = 0.2,
         freeze_backbone: bool = False,
+        prediction_head_config: dict[str, Any] | None = None,
     ):
         super().__init__()
 
@@ -54,11 +31,18 @@ class ResNetMultiLabelClassifier(nn.Module):
                 param.requires_grad = False
 
         in_features = self.backbone.fc.in_features
-        self.backbone.fc = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(in_features, num_classes),
+        
+        if prediction_head_config is None:
+            prediction_head_config = {
+                "type": "linear",
+                "dropout": dropout,
+            }
+        
+        self.backbone.fc = build_prediction_head(
+            in_features=in_features,
+            num_classes=num_classes,
+            head_config=prediction_head_config,
         )
-
         # Make sure the classification head is trainable.
         for param in self.backbone.fc.parameters():
             param.requires_grad = True
@@ -81,6 +65,7 @@ class CLIPPosterClassifier(nn.Module):
         clip_pretrained: str = "openai",
         freeze_backbone: bool = False,
         dropout: float = 0.2,
+        prediction_head_config: dict[str, Any] | None = None,
     ):
         super().__init__()
 
@@ -103,11 +88,17 @@ class CLIPPosterClassifier(nn.Module):
 
         feature_dim = self.clip_model.visual.output_dim
 
-        self.classifier = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(feature_dim, num_classes),
+        if prediction_head_config is None:
+            prediction_head_config = {
+                "type": "linear",
+                "dropout": dropout,
+            }
+        
+        self.classifier = build_prediction_head(
+            in_features=feature_dim,
+            num_classes=num_classes,
+            head_config=prediction_head_config,
         )
-
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         features = self.clip_model.encode_image(images)
         features = features.float()
@@ -118,14 +109,7 @@ class CLIPPosterClassifier(nn.Module):
 def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
     model_config = config["model"]
     model_name = model_config["name"]
-
-    #if model_name == "resnet50":
-    #    return ResNetMultiLabelClassifier(
-    #        num_classes=num_classes,
-    #        backbone_name="resnet50",
-    #        pretrained=model_config.get("pretrained", True),
-    #        dropout=model_config.get("dropout", 0.2),
-    #    )
+    prediction_head_config = model_config.get("prediction_head", None)
 
     if model_name == "resnet50":
         return ResNetMultiLabelClassifier(
@@ -134,6 +118,7 @@ def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
             pretrained=model_config.get("pretrained", True),
             dropout=model_config.get("dropout", 0.2),
             freeze_backbone=model_config.get("freeze_backbone", False),
+            prediction_head_config=prediction_head_config,
         )
 
     if model_name == "clip":
@@ -143,6 +128,8 @@ def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
             clip_pretrained=model_config.get("clip_pretrained", "openai"),
             freeze_backbone=model_config.get("freeze_backbone", False),
             dropout=model_config.get("dropout", 0.2),
+            prediction_head_config=precition_head_config,
+
         )
 
     raise ValueError(f"Unknown model name: {model_name}")

@@ -11,6 +11,13 @@ model:
   pretrained: true
   dropout: 0.5
   freeze_backbone: true
+  prediction_head:
+    type: mlp
+    hidden_dim: 512
+    num_hidden_layers: 4
+    dropout: 0.5
+    use_layer_norm: true
+    activation: gelu
 
 training:
   weight_decay: 0.00001
@@ -28,15 +35,16 @@ training:
     - fc
   stages:
     - name: head_only
-      epochs: 50
+      epochs: 20
       freeze_backbone: true
       lr: 0.0001
       scheduler: cosine
       min_lr: 0.000001
+
     - name: finetune
-      epochs: 50
+      epochs: 20
       freeze_backbone: false
-      lr: 0.00003
+      lr: 0.000005
       classifier_lr: 0.0001
       scheduler: cosine
       min_lr: 0.000001
