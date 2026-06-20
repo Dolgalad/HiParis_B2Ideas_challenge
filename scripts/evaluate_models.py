@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from typing import Any
+import re
 
 import yaml
 import numpy as np
@@ -343,14 +344,20 @@ def plot_prediction_grid(
 def evaluate_model_spec(
     label: str,
     config_path: str,
-    checkpoint_path: str,
+    checkpoint_path: str | Path,
     device: torch.device,
     threshold: float,
+    config: dict[str, Any] | None = None,
+    test_loader=None,
+    genre_to_idx: dict[str, int] | None = None,
 ):
-    config = load_config(config_path)
+    if config is None:
+        config = load_config(config_path)
+
     checkpoint = load_checkpoint(checkpoint_path, device=device)
 
-    test_loader, genre_to_idx = build_test_loader(config)
+    if test_loader is None or genre_to_idx is None:
+        test_loader, genre_to_idx = build_test_loader(config)
 
     model = build_loaded_model(
         config=config,
@@ -374,7 +381,14 @@ def evaluate_model_spec(
 
     row = {
         "model": label,
-        "checkpoint": checkpoint_path,
+        "checkpoint": str(checkpoint_path),
+        "checkpoint_epoch": checkpoint.get("epoch", ""),
+        "checkpoint_stage": checkpoint.get("stage_name", ""),
+        "checkpoint_stage_epoch": checkpoint.get("stage_epoch", ""),
+        "val_loss": checkpoint.get("val_metrics", {}).get("loss", float("nan")),
+        "val_micro_f1": checkpoint.get("val_metrics", {}).get("micro_f1", float("nan")),
+        "val_macro_f1": checkpoint.get("val_metrics", {}).get("macro_f1", float("nan")),
+        "val_map": checkpoint.get("val_metrics", {}).get("map", float("nan")),
         "threshold": threshold,
         "micro_f1": metrics["micro_f1"],
         "macro_f1": metrics["macro_f1"],
@@ -384,18 +398,106 @@ def evaluate_model_spec(
     return row, probs, targets, test_loader, genre_to_idx
 
 
-def parse_model_specs(model_args: list[list[str]]) -> list[tuple[str, str, str]]:
+def stage_checkpoint_slug(stage_index: int, stage_name: str) -> str:
+    safe_stage_name = "".join(
+        char if char.isalnum() or char in ["_", "-"] else "_"
+        for char in stage_name
+    )
+
+    return f"stage_{stage_index}_{safe_stage_name}"
+
+
+def checkpoint_label(base_label: str, checkpoint_path: str | Path) -> str:
+    checkpoint_path = Path(checkpoint_path)
+    stem = checkpoint_path.stem
+
+    if stem == "best":
+        return f"{base_label}/best_overall"
+
+    if stem.startswith("best_stage_"):
+        stage_name = re.sub(r"^best_stage_\d+_", "", stem)
+        return f"{base_label}/{stage_name}"
+
+    return f"{base_label}/{stem}"
+
+
+def discover_checkpoints_from_config(
+    config: dict[str, Any],
+    include_overall_best: bool,
+    include_stage_best: bool,
+) -> list[Path]:
+    training_config = config.get("training", {})
+    output_dir = training_config.get("output_dir")
+
+    if output_dir is None:
+        raise ValueError(
+            "Cannot auto-discover checkpoints because training.output_dir is missing "
+            "from the config."
+        )
+
+    output_dir = Path(output_dir)
+    checkpoint_paths: list[Path] = []
+
+    if include_overall_best:
+        checkpoint_paths.append(output_dir / "best.pt")
+
+    if include_stage_best:
+        stages = training_config.get("stages", None)
+
+        if stages is not None:
+            for stage_index, stage_config in enumerate(stages, start=1):
+                stage_name = stage_config.get("name", f"stage_{stage_index}")
+                stage_slug = stage_checkpoint_slug(stage_index, stage_name)
+                checkpoint_paths.append(output_dir / f"best_{stage_slug}.pt")
+        else:
+            checkpoint_paths.extend(sorted(output_dir.glob("best_stage_*.pt")))
+
+    existing_paths = []
+
+    for checkpoint_path in checkpoint_paths:
+        if checkpoint_path.exists():
+            existing_paths.append(checkpoint_path)
+        else:
+            print(f"Warning: checkpoint not found, skipping: {checkpoint_path}")
+
+    if not existing_paths:
+        raise FileNotFoundError(
+            f"No checkpoints found under {output_dir}. Expected files such as "
+            "best.pt or best_stage_*.pt."
+        )
+
+    return existing_paths
+
+
+def parse_model_specs(
+    model_args: list[list[str]],
+    include_overall_best: bool,
+    include_stage_best: bool,
+) -> list[tuple[str, str, Path, dict[str, Any]]]:
     specs = []
 
     for item in model_args:
-        if len(item) != 3:
+        if len(item) not in [2, 3]:
             raise ValueError(
-                "Each --model entry must contain exactly three values: "
-                "LABEL CONFIG_PATH CHECKPOINT_PATH"
+                "Each --model entry must contain either two or three values: "
+                "LABEL CONFIG_PATH [CHECKPOINT_PATH]"
             )
 
-        label, config_path, checkpoint_path = item
-        specs.append((label, config_path, checkpoint_path))
+        label = item[0]
+        config_path = item[1]
+        config = load_config(config_path)
+
+        if len(item) == 3:
+            checkpoint_paths = [Path(item[2])]
+        else:
+            checkpoint_paths = discover_checkpoints_from_config(
+                config=config,
+                include_overall_best=include_overall_best,
+                include_stage_best=include_stage_best,
+            )
+
+        for checkpoint_path in checkpoint_paths:
+            specs.append((checkpoint_label(label, checkpoint_path), config_path, checkpoint_path, config))
 
     return specs
 
@@ -410,14 +512,28 @@ def main() -> None:
 
     parser.add_argument(
         "--model",
-        nargs=3,
+        nargs="+",
         action="append",
         required=True,
-        metavar=("LABEL", "CONFIG", "CHECKPOINT"),
+        metavar="MODEL_SPEC",
         help=(
-            "Model specification. Use once per model: "
-            "--model ResNet configs/resnet.yaml checkpoints/resnet/best.pt"
+            "Model specification. Use either two values to auto-discover checkpoints "
+            "from training.output_dir, or three values to evaluate one explicit checkpoint: "
+            "--model ResNet configs/resnet.yaml "
+            "or --model ResNet configs/resnet.yaml checkpoints/resnet/best.pt"
         ),
+    )
+
+    parser.add_argument(
+        "--no-overall-best",
+        action="store_true",
+        help="When checkpoint discovery is used, skip training.output_dir/best.pt.",
+    )
+
+    parser.add_argument(
+        "--no-stage-best",
+        action="store_true",
+        help="When checkpoint discovery is used, skip best checkpoints for each training stage.",
     )
 
     parser.add_argument(
@@ -462,7 +578,11 @@ def main() -> None:
     args = parser.parse_args()
 
     device = resolve_device(args.device)
-    model_specs = parse_model_specs(args.model)
+    model_specs = parse_model_specs(
+        model_args=args.model,
+        include_overall_best=not args.no_overall_best,
+        include_stage_best=not args.no_stage_best,
+    )
 
     rows = []
     all_probs = {}
@@ -471,13 +591,23 @@ def main() -> None:
     reference_test_loader = None
     reference_genre_to_idx = None
 
-    for label, config_path, checkpoint_path in model_specs:
+    loader_cache = {}
+
+    for label, config_path, checkpoint_path, config in model_specs:
+        if config_path not in loader_cache:
+            loader_cache[config_path] = build_test_loader(config)
+
+        test_loader, genre_to_idx = loader_cache[config_path]
+
         row, probs, targets, test_loader, genre_to_idx = evaluate_model_spec(
             label=label,
             config_path=config_path,
             checkpoint_path=checkpoint_path,
             device=device,
             threshold=args.threshold,
+            config=config,
+            test_loader=test_loader,
+            genre_to_idx=genre_to_idx,
         )
 
         rows.append(row)
