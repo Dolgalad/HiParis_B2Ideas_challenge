@@ -8,6 +8,8 @@ data:
 
 model:
   name: clip
+  clip_model_name: ViT-B-32
+  clip_pretrained: openai
   pretrained: true
   dropout: 0.5
   freeze_backbone: true
@@ -36,16 +38,16 @@ training:
 
   stages:
     - name: head_only
-      epochs: 40
+      epochs: 30
       freeze_backbone: true
-      lr: 0.0001
+      lr: 0.00001
       scheduler: cosine
       min_lr: 0.000001
 
     - name: finetune
       epochs: 20
       freeze_backbone: false
-      lr: 0.00001
-      classifier_lr: 0.0001
+      lr: 0.000001
+      classifier_lr: 0.00001
       scheduler: cosine
       min_lr: 0.000001
