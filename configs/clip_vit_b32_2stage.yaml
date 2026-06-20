@@ -1,0 +1,30 @@
+training:
+  weight_decay: 0.00001
+  device: auto
+  output_dir: checkpoints/clip_vit_b32
+  save_best_metric: map
+  save_best_metric_sense: max
+  log_every_n_steps: 20
+  use_pos_weight: true
+  max_pos_weight: 10.0
+
+  classifier_patterns:
+    - classifier
+    - head
+    - fc
+
+  stages:
+    - name: head_only
+      epochs: 50
+      freeze_backbone: true
+      lr: 0.0001
+      scheduler: cosine
+      min_lr: 0.000001
+
+    - name: finetune
+      epochs: 50
+      freeze_backbone: false
+      lr: 0.000005
+      classifier_lr: 0.0001
+      scheduler: cosine
+      min_lr: 0.000001

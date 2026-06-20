@@ -1,0 +1,43 @@
+seed: 2026
+
+data:
+  data_dir: /data1/schulz/hiparis/data
+  image_size: 224
+  batch_size: 64
+  num_workers: 2
+
+model:
+  name: resnet50
+  pretrained: true
+  dropout: 0.5
+  freeze_backbone: true
+
+training:
+  weight_decay: 0.00001
+  device: auto
+  output_dir: checkpoints/resnet50_2stage
+  save_best_metric: map
+  save_best_metric_sense: max
+  log_every_n_steps: 20
+  use_pos_weight: true
+  max_pos_weight: 10.0
+
+  classifier_patterns:
+    - classifier
+    - head
+    - fc
+  stages:
+    - name: head_only
+      epochs: 50
+      freeze_backbone: true
+      lr: 0.0001
+      scheduler: cosine
+      min_lr: 0.000001
+    - name: finetune
+      epochs: 50
+      freeze_backbone: false
+      lr: 0.00003
+      classifier_lr: 0.0001
+      scheduler: cosine
+      min_lr: 0.000001
+
