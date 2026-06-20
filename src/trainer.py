@@ -639,7 +639,6 @@ class Trainer:
     
         return lrs
     
-    
     def _append_history_row(
         self,
         epoch: int,
@@ -652,6 +651,8 @@ class Trainer:
         is_best: bool,
         is_stage_best: bool,
     ) -> None:
+        lrs = self._get_lrs()
+    
         row = {
             "epoch": epoch,
             "stage_index": stage_index,
@@ -668,15 +669,45 @@ class Trainer:
             "checkpoint_metric": checkpoint_metric,
             "is_best": int(is_best),
             "is_stage_best": int(is_stage_best),
-            **self._get_lrs(),
+            "lr_model": "",
+            "lr_backbone": "",
+            "lr_classifier": "",
         }
+    
+        row.update(lrs)
+    
+        fieldnames = [
+            "epoch",
+            "stage_index",
+            "stage_name",
+            "stage_epoch",
+            "train_loss",
+            "train_micro_f1",
+            "train_macro_f1",
+            "train_map",
+            "val_loss",
+            "val_micro_f1",
+            "val_macro_f1",
+            "val_map",
+            "checkpoint_metric",
+            "is_best",
+            "is_stage_best",
+            "lr_model",
+            "lr_backbone",
+            "lr_classifier",
+        ]
     
         write_header = not self.history_path.exists()
     
         with open(self.history_path, "a", newline="") as file:
-            writer = csv.DictWriter(file, fieldnames=list(row.keys()))
+            writer = csv.DictWriter(
+                file,
+                fieldnames=fieldnames,
+                extrasaction="ignore",
+            )
     
             if write_header:
                 writer.writeheader()
     
-            writer.writerow(row)
+            writer.writerow(row)    
+
