@@ -7,10 +7,12 @@ data:
   num_workers: 2
 
 model:
-  name: clip
+  name: deit
+  timm_model_name: deit_small_patch16_224
   pretrained: true
   dropout: 0.5
   freeze_backbone: true
+
   prediction_head:
     type: mlp
     hidden_dim: 512
@@ -22,7 +24,7 @@ model:
 training:
   weight_decay: 0.00001
   device: auto
-  output_dir: checkpoints/clip_vit_b32_2stage
+  output_dir: checkpoints/deit_small_patch16_224_2stage
   save_best_metric: map
   save_best_metric_sense: max
   log_every_n_steps: 20

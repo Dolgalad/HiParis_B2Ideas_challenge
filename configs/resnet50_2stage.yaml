@@ -14,9 +14,9 @@ model:
   prediction_head:
     type: mlp
     hidden_dim: 512
-    num_hidden_layers: 4
+    num_hidden_layers: 2
     dropout: 0.5
-    use_layer_norm: true
+    use_layer_norm: false
     activation: gelu
 
 training:
@@ -35,7 +35,7 @@ training:
     - fc
   stages:
     - name: head_only
-      epochs: 20
+      epochs: 40
       freeze_backbone: true
       lr: 0.0001
       scheduler: cosine
@@ -44,7 +44,7 @@ training:
     - name: finetune
       epochs: 20
       freeze_backbone: false
-      lr: 0.000005
+      lr: 0.00001
       classifier_lr: 0.0001
       scheduler: cosine
       min_lr: 0.000001

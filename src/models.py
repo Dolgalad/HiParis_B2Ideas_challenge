@@ -105,6 +105,67 @@ class CLIPPosterClassifier(nn.Module):
         logits = self.classifier(features)
         return logits
 
+class TimmVisionTransformerClassifier(nn.Module):
+    """
+    Supervised ImageNet-pretrained visual transformer + multilabel prediction head.
+
+    This is useful as a comparison against CLIP:
+    - DeiT/ViT uses supervised visual pretraining.
+    - CLIP uses image-text contrastive pretraining.
+    """
+
+    def __init__(
+        self,
+        num_classes: int,
+        timm_model_name: str = "deit_small_patch16_224",
+        pretrained: bool = True,
+        freeze_backbone: bool = False,
+        dropout: float = 0.2,
+        prediction_head_config: dict[str, Any] | None = None,
+    ):
+        super().__init__()
+
+        try:
+            import timm
+        except ImportError as exc:
+            raise ImportError(
+                "timm is required for the supervised ViT/DeiT model. "
+                "Install it with: pip install timm"
+            ) from exc
+
+        self.backbone = timm.create_model(
+            timm_model_name,
+            pretrained=pretrained,
+            num_classes=0,
+        )
+
+        feature_dim = self.backbone.num_features
+
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+
+        if prediction_head_config is None:
+            prediction_head_config = {
+                "type": "linear",
+                "dropout": dropout,
+            }
+
+        self.classifier = build_prediction_head(
+            in_features=feature_dim,
+            num_classes=num_classes,
+            head_config=prediction_head_config,
+        )
+
+        # Make sure the classification head is trainable.
+        for param in self.classifier.parameters():
+            param.requires_grad = True
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        features = self.backbone(images)
+        logits = self.classifier(features)
+        return logits
+
 
 def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
     model_config = config["model"]
@@ -128,8 +189,21 @@ def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
             clip_pretrained=model_config.get("clip_pretrained", "openai"),
             freeze_backbone=model_config.get("freeze_backbone", False),
             dropout=model_config.get("dropout", 0.2),
-            prediction_head_config=precition_head_config,
+            prediction_head_config=prediction_head_config,
 
+        )
+
+    if model_name == "timm_vit":
+        return TimmVisionTransformerClassifier(
+            num_classes=num_classes,
+            timm_model_name=model_config.get(
+                "timm_model_name",
+                "deit_small_patch16_224",
+            ),
+            pretrained=model_config.get("pretrained", True),
+            freeze_backbone=model_config.get("freeze_backbone", False),
+            dropout=model_config.get("dropout", 0.2),
+            prediction_head_config=prediction_head_config,
         )
 
     raise ValueError(f"Unknown model name: {model_name}")
