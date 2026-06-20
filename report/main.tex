@@ -1,0 +1,79 @@
+\documentclass[a4paper]{article}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+
+\newcommand{\R}{\mathbb{R}}
+
+\title{Hi! Paris - B2Ideas Challenge report}
+\author{Alexandre Schulz}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Le challenge consiste à proposer un prédicteur de genre de film à partir du poster du film en question. Dans ce rapport nous présenterons la méthodologie proposé, basée sur le "fine-tunning" de modèles de la littérature ResNet~\cite{he2016}, CLIP~\cite{radford2021} et DeiT~\cite{touvron2021}. 
+
+Le poster du film contient des information visuelles sous forme de palette de couleur utilisé, geométries évocatives du genre en question, et d'information textuelles. 
+
+\section{Les données}
+Le dataset fournit contient une collection de $N=9826$ films ($11$ rangées ont été identifiées comme invalide) et $K=19$ genre de films uniques. La moyenne du nombre de genres par film est de $2.62$. La distribution des genres de films et du nombre de genres par film est représenté dans les Figures~\ref{fig:dataset_genre_distribution}. 
+
+Les posters ont des tailles variants de $(500, 700)$ à $(2000,3000)$ avec un "aspect ratio" d'environ $0.67$. La collection d'image est téléchargées et lors de l'entrainement les images sont "paddées" en forme carré avant d'être "reshaped" à une taille de 224px par 224px.
+
+\begin{figure}[htbp]
+    \centering
+
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/num_genres_distribution.png}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/genre_frequencies.png}
+    \end{subfigure}
+
+    \caption{Gauche: distribution du nombre de genres par film. Droite: fréquence d'occurence de chaque genre.}
+    \label{fig:dataset_genre_distribution}
+\end{figure}
+
+Le problème est donc un problème de classification multi-label. L'entrainement des modèle portera sur $80\%$, la validation sur $10\%$ et l'évaluation sur $10\%$. 
+
+\section{Choix de modélisation et entraînement} 
+Le dataset est noté 
+\begin{equation} 
+    \mathcal{D} = \{(x^i, y^i)\}_{i=1}^N, 
+\end{equation} 
+où $x^i$ désigne l'image du poster du film $i$, et où 
+\begin{equation} 
+    y^i = (y^i_k)_{1 \leq k \leq K} \in \{0,1\}^K 
+\end{equation} 
+est un vecteur d'indicatrices multi-label. On a $y^i_k = 1$ si le film $i$ appartient au genre $k$, et $y^i_k = 0$ sinon. Chaque modèle préentraîné est utilisé comme extracteur de caractéristiques. Sa dernière couche de classification est remplacée par une tête de prédiction de type MLP. Plus précisément, si $f_\theta : \mathcal{X} \rightarrow \R^d$ désigne l'encodeur visuel préentraîné, la tête de prédiction est une fonction 
+\begin{equation} 
+    h_W : \R^d \rightarrow \R^K, 
+\end{equation} 
+où $W$ désigne les paramètres entraînables de cette tête. Pour une image $x$, le modèle produit donc un vecteur de logits 
+\begin{equation} 
+    s_W(x) = h_W(f_\theta(x)) = (s_k(x))_{1 \leq k \leq K}. 
+\end{equation} 
+Chaque logit $s_k(x)$ représente le score non normalisé d'association entre le poster $x$ et le genre $k$. Les probabilités prédites sont obtenues indépendamment pour chaque genre par une fonction sigmoïde : 
+\begin{equation} 
+    \hat{p}_k(x) = \sigma(s_k(x)). 
+\end{equation} 
+L'entraînement du modèle se fait en minimisant une binary cross-entropy pondérée, adaptée au cadre multi-label : 
+\begin{equation} 
+    \mathcal{L}(\theta, W) = \frac{1}{|\mathcal{D}_{\mathrm{train}}|} \sum_{(x,y)\in \mathcal{D}_{\mathrm{train}}} \sum_{k=1}^{K} \omega_k \, \mathrm{BCE}(y_k, s_k(x)). 
+\end{equation} 
+Les poids $\omega_k$ permettent de prendre en compte le déséquilibre entre les classes. En pratique, la BCE est appliquée aux logits du modèle, ce qui évite d'appliquer explicitement la sigmoïde avant le calcul de la loss. 
+
+\section{Résultats}
+Chaque modèle est entrainé pour un total de 50 epochs en deux phases: 30 epochs en figeant les paramètres préentrainées et 20 epochs de "fine tuning" portant sur le modèle au complet avec une learning rate réduite sur les paramètres pré-entrainées pour mitiger les phénomènes de sur-entrainement. Nous raportons dans la table les résultats sur le set de test du modèle en phase 1 et 2. 
+
+\bibliographystyle{plain}
+\bibliography{references.bib}
+
+\end{document}
