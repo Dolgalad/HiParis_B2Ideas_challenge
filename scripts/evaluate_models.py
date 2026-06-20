@@ -188,13 +188,16 @@ def unnormalize_image(image_tensor: torch.Tensor) -> np.ndarray:
 def collect_illustration_batch(test_loader, num_examples: int):
     images = []
     titles = []
+    targets = []
 
     for batch in test_loader:
         batch_images = batch["image"]
+        batch_targets = batch["target"]
         batch_titles = batch.get("title", None)
 
         for i in range(batch_images.shape[0]):
             images.append(batch_images[i])
+            targets.append(batch_targets[i].detach().cpu().numpy())
 
             if batch_titles is not None:
                 titles.append(str(batch_titles[i]))
@@ -202,14 +205,25 @@ def collect_illustration_batch(test_loader, num_examples: int):
                 titles.append(f"Example {len(images)}")
 
             if len(images) >= num_examples:
-                return images, titles
+                return images, titles, targets
 
-    return images, titles
+    return images, titles, targets
 
+def true_genres(
+    target: np.ndarray,
+    idx_to_genre: dict[int, str],
+) -> list[str]:
+    indices = np.where(target > 0.5)[0]
+
+    return [
+        idx_to_genre[idx]
+        for idx in indices
+    ]
 
 def plot_prediction_grid(
     illustration_images: list[torch.Tensor],
     illustration_titles: list[str],
+    illustration_targets: list[np.ndarray],
     model_probs: dict[str, np.ndarray],
     idx_to_genre: dict[int, str],
     top_k: int,
@@ -218,31 +232,71 @@ def plot_prediction_grid(
     num_examples = len(illustration_images)
     model_names = list(model_probs.keys())
 
-    num_rows = 1 + len(model_names)
+    row_labels = ["Poster", "True"] + model_names
+    num_rows = len(row_labels)
     num_cols = num_examples
 
     fig_width = max(3.0 * num_cols, 8.0)
-    fig_height = 2.8 + 0.9 * len(model_names)
+    fig_height = 2.6 + 1.0 * (num_rows - 1)
 
     fig, axes = plt.subplots(
         num_rows,
         num_cols,
         figsize=(fig_width, fig_height),
         squeeze=False,
+        gridspec_kw={
+            "height_ratios": [2.2] + [1.0] * (num_rows - 1),
+            "hspace": 0.35,
+            "wspace": 0.25,
+        },
     )
 
+    # Poster row
     for col in range(num_cols):
         ax = axes[0, col]
         ax.imshow(unnormalize_image(illustration_images[col]))
-        ax.set_title(illustration_titles[col][:35], fontsize=8)
-        ax.axis("off")
+        ax.set_title(illustration_titles[col][:35], fontsize=8, pad=8)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
 
-    for row_idx, model_name in enumerate(model_names, start=1):
+    # True-label row
+    for col in range(num_cols):
+        ax = axes[1, col]
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        labels = true_genres(
+            target=illustration_targets[col],
+            idx_to_genre=idx_to_genre,
+        )
+
+        text = "\n".join(labels)
+
+        ax.text(
+            0.5,
+            0.5,
+            text,
+            ha="center",
+            va="center",
+            fontsize=8,
+            transform=ax.transAxes,
+            wrap=True,
+        )
+
+    # Model prediction rows
+    for model_row, model_name in enumerate(model_names, start=2):
         probs = model_probs[model_name]
 
         for col in range(num_cols):
-            ax = axes[row_idx, col]
-            ax.axis("off")
+            ax = axes[model_row, col]
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
 
             genres = top_k_genres(
                 probs=probs,
@@ -253,18 +307,30 @@ def plot_prediction_grid(
 
             text = "\n".join(genres)
 
-            if col == 0:
-                text = f"{model_name}\n\n{text}"
-
             ax.text(
-                0.0,
+                0.5,
                 0.5,
                 text,
-                ha="left",
+                ha="center",
                 va="center",
                 fontsize=8,
                 transform=ax.transAxes,
+                wrap=True,
             )
+
+    # Add row labels outside the grid, aligned vertically by row.
+    for row_idx, row_label in enumerate(row_labels):
+        ax = axes[row_idx, 0]
+        ax.text(
+            -0.18,
+            0.5,
+            row_label,
+            ha="right",
+            va="center",
+            fontsize=9,
+            fontweight="bold" if row_idx <= 1 else "normal",
+            transform=ax.transAxes,
+        )
 
     plt.tight_layout()
 
@@ -274,8 +340,6 @@ def plot_prediction_grid(
     plt.close(fig)
 
     print(f"Saved qualitative prediction grid to {output_path}")
-
-
 def evaluate_model_spec(
     label: str,
     config_path: str,
@@ -446,22 +510,22 @@ def main() -> None:
         if reference_test_loader is None or reference_genre_to_idx is None:
             raise RuntimeError("No reference test loader available for plotting.")
 
-        illustration_images, illustration_titles = collect_illustration_batch(
+        illustration_images, illustration_titles, illustration_targets = collect_illustration_batch(
             test_loader=reference_test_loader,
             num_examples=args.num_examples,
         )
-
+        
         idx_to_genre = idx_to_genre_mapping(reference_genre_to_idx)
-
+        
         plot_prediction_grid(
             illustration_images=illustration_images,
             illustration_titles=illustration_titles,
+            illustration_targets=illustration_targets,
             model_probs=all_probs,
             idx_to_genre=idx_to_genre,
             top_k=args.top_k,
             output_path=args.plot_output,
         )
-
 
 if __name__ == "__main__":
     main()

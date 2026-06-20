@@ -386,8 +386,8 @@ def main() -> None:
         print(f"Saved targets to {targets_output}")
 
     thresholds = np.linspace(
-        0.0,
-        1.0,
+        0.2,
+        0.9,
         args.num_thresholds,
     )
 
