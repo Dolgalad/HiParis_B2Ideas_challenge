@@ -6,3 +6,4 @@ __pycache__/
 # data
 data/poster_cache/
 data/movies_*.csv
+checkpoints/
