@@ -221,6 +221,47 @@ def true_genres(
         for idx in indices
     ]
 
+def draw_colored_word_list(
+    ax,
+    words,
+    colors,
+    x=0.5,
+    y=0.5,
+    fontsize=8,
+    line_spacing=1.25,
+    **kwargs,
+):
+    """
+    Draw a vertically centered list of words, each with its own color.
+
+    words: list[str]
+    colors: list[str]
+    x, y: position in axes coordinates
+    line_spacing: multiplier relative to fontsize
+    """
+
+    assert len(words) == len(colors)
+
+    n = len(words)
+    spacing_pts = fontsize * line_spacing
+
+    for i, (word, color) in enumerate(zip(words, colors)):
+        # Center the whole block around y
+        offset_y = ((n - 1) / 2 - i) * spacing_pts
+
+        ax.annotate(
+            word,
+            xy=(x, y),
+            xycoords=ax.transAxes,
+            xytext=(0, offset_y),
+            textcoords="offset points",
+            ha="center",
+            va="center",
+            fontsize=fontsize,
+            color=color,
+            **kwargs,
+        )
+
 def plot_prediction_grid(
     illustration_images: list[torch.Tensor],
     illustration_titles: list[str],
@@ -232,12 +273,13 @@ def plot_prediction_grid(
 ) -> None:
     num_examples = len(illustration_images)
     model_names = list(model_probs.keys())
+    model_names = [n for n in model_names if "best_overall" in n]
 
-    row_labels = ["Poster", "True"] + model_names
+    row_labels = ["", "Vrais genres"] + model_names
     num_rows = len(row_labels)
     num_cols = num_examples
 
-    fig_width = max(3.0 * num_cols, 8.0)
+    fig_width = max(1.7 * num_cols, 8.0)
     fig_height = 2.6 + 1.0 * (num_rows - 1)
 
     fig, axes = plt.subplots(
@@ -248,7 +290,7 @@ def plot_prediction_grid(
         gridspec_kw={
             "height_ratios": [2.2] + [1.0] * (num_rows - 1),
             "hspace": 0.35,
-            "wspace": 0.25,
+            "wspace": 0.00,
         },
     )
 
@@ -256,7 +298,7 @@ def plot_prediction_grid(
     for col in range(num_cols):
         ax = axes[0, col]
         ax.imshow(unnormalize_image(illustration_images[col]))
-        ax.set_title(illustration_titles[col][:35], fontsize=8, pad=8)
+        #ax.set_title(illustration_titles[col][:35], fontsize=8, pad=8)
         ax.set_xticks([])
         ax.set_yticks([])
         for spine in ax.spines.values():
@@ -290,7 +332,10 @@ def plot_prediction_grid(
 
     # Model prediction rows
     for model_row, model_name in enumerate(model_names, start=2):
+        if not "best_overall" in model_name:
+            continue
         probs = model_probs[model_name]
+
 
         for col in range(num_cols):
             ax = axes[model_row, col]
@@ -305,22 +350,25 @@ def plot_prediction_grid(
                 idx_to_genre=idx_to_genre,
                 top_k=top_k,
             )
+            labels = true_genres(
+                target=illustration_targets[col],
+                idx_to_genre=idx_to_genre,
+            )
 
-            text = "\n".join(genres)
-
-            ax.text(
-                0.5,
-                0.5,
-                text,
-                ha="center",
-                va="center",
+            colors = ["g" if g.split("(")[0].strip() in labels else "r" for g in genres]
+            draw_colored_word_list(
+                ax,
+                genres,
+                colors,
+                x=0.5,
+                y=0.5,
                 fontsize=8,
-                transform=ax.transAxes,
-                wrap=True,
             )
 
     # Add row labels outside the grid, aligned vertically by row.
     for row_idx, row_label in enumerate(row_labels):
+        if "best_overall" in row_label:
+            row_label = row_label.replace("/best_overall", "")
         ax = axes[row_idx, 0]
         ax.text(
             -0.18,
