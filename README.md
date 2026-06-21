@@ -55,7 +55,8 @@ To launch all training runs
 python scripts/train.sh --config <config_file>
 ```
 
-And generate plot and result tables with 
+# Evaluation and training analysis
+To run evaluation of the trained model and generate plots and result tables run
 ```bash
 ./generate_figures.sh
 ```
