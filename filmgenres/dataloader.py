@@ -32,6 +32,7 @@ def create_dataloaders(
     batch_size: int = 32,
     num_workers: int = 4,
     use_cache: bool = True,
+    image_normalization_mode: str = "resnet",
 ):
     """
     Create the train, validation and testing dataloaders. The `data_dir` argument is expected to point to a directory containing the split files 
@@ -54,6 +55,7 @@ def create_dataloaders(
             "train",
             image_size=image_size,
             include_base=not use_cache,
+            image_normalization_mode=image_normalization_mode,
         ),
         cache_dir=cache_dir / "train",
         cache_base_images=use_cache,
@@ -67,6 +69,7 @@ def create_dataloaders(
             "val",
             image_size=image_size,
             include_base=not use_cache,
+            image_normalization_mode=image_normalization_mode,
         ),
         cache_dir=cache_dir / "val",
         cache_base_images=use_cache,
@@ -80,6 +83,7 @@ def create_dataloaders(
             "test",
             image_size=image_size,
             include_base=not use_cache,
+            image_normalization_mode=image_normalization_mode,
         ),
         cache_dir=cache_dir / "test",
         cache_base_images=use_cache,

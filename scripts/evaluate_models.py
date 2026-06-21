@@ -54,6 +54,8 @@ def get_data_config(config: dict[str, Any]) -> tuple[str, int, int, int, bool]:
 
 def build_test_loader(config: dict[str, Any]):
     data_dir, image_size, batch_size, num_workers, use_cache = get_data_config(config)
+    image_normalization_mode = get_image_normalization_mode(config)
+
 
     train_loader, val_loader, test_loader, genre_to_idx = create_dataloaders(
         data_dir=data_dir,
@@ -61,6 +63,7 @@ def build_test_loader(config: dict[str, Any]):
         batch_size=batch_size,
         num_workers=num_workers,
         use_cache=use_cache,
+        image_normalization_mode=image_normalization_mode,
     )
 
     return test_loader, genre_to_idx
@@ -259,6 +262,15 @@ def draw_colored_word_list(
             color=color,
             **kwargs,
         )
+def get_image_normalization_mode(config: dict[str, Any]) -> str:
+    model_name = config.get("model", {}).get("name", "").lower()
+
+    if "clip" in model_name:
+        return "clip"
+    if "deit" in model_name:
+        return "deit"
+
+    return "resnet"
 
 def plot_prediction_grid(
     illustration_images: list[torch.Tensor],
@@ -268,6 +280,7 @@ def plot_prediction_grid(
     idx_to_genre: dict[int, str],
     top_k: int,
     output_path: str | Path,
+    image_normalization_mode: str = "resnet",
 ) -> None:
     num_examples = len(illustration_images)
     model_names = list(model_probs.keys())
@@ -295,7 +308,7 @@ def plot_prediction_grid(
     # Poster row
     for col in range(num_cols):
         ax = axes[0, col]
-        ax.imshow(unnormalize_image(illustration_images[col]))
+        ax.imshow(unnormalize_image(illustration_images[col], image_normalization_mode=image_normalization_mode))
         #ax.set_title(illustration_titles[col][:35], fontsize=8, pad=8)
         ax.set_xticks([])
         ax.set_yticks([])
@@ -636,6 +649,7 @@ def main() -> None:
     reference_targets = None
     reference_test_loader = None
     reference_genre_to_idx = None
+    reference_image_normalization_mode = None
 
     loader_cache = {}
 
@@ -663,6 +677,7 @@ def main() -> None:
             reference_targets = targets
             reference_test_loader = test_loader
             reference_genre_to_idx = genre_to_idx
+            reference_image_normalization_mode = get_image_normalization_mode(config)
         else:
             if targets.shape != reference_targets.shape:
                 raise ValueError(
@@ -701,6 +716,7 @@ def main() -> None:
             idx_to_genre=idx_to_genre,
             top_k=args.top_k,
             output_path=args.plot_output,
+            image_normalization_mode=reference_image_normalization_mode,
         )
 
 if __name__ == "__main__":

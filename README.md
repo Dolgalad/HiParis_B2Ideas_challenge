@@ -38,7 +38,7 @@ pyton scripts/prepare_data.py
   <em>Left: split genre frequency distribution. Right: split label count distribution.</em>
 </p>
 
-## Data preparation
+## Training
 To launch all training runs 
 ```bash
 ./run_training.sh
@@ -46,3 +46,7 @@ To launch all training runs
 python scripts/train.sh --config <config_file>
 ```
 
+And generate plot and result tables with 
+```bash
+./generate_figures.sh
+```
