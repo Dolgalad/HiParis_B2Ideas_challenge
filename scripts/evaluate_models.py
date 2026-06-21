@@ -15,13 +15,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn.metrics import f1_score, average_precision_score
 
-from src.models import build_model
-from src.dataloader import create_dataloaders
-
-
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD = np.array([0.229, 0.224, 0.225])
-
+from filmgenres.models import build_model
+from filmgenres.dataloader import create_dataloaders
+from filmgenres.dataset import get_image_normalization_constants
 
 def load_config(config_path: str | Path) -> dict[str, Any]:
     with open(config_path, "r") as file:
@@ -173,15 +169,17 @@ def top_k_genres(
     ]
 
 
-def unnormalize_image(image_tensor: torch.Tensor) -> np.ndarray:
+def unnormalize_image(image_tensor: torch.Tensor, image_normalization_mode="resnet") -> np.ndarray:
     """
     Convert a normalized CHW tensor to a displayable HWC numpy image.
     Assumes ImageNet normalization, which is what torchvision/timm/CLIP-style
     image pipelines commonly use in this project.
     """
+
+    normalization = get_image_normalization_constants(image_normalization_mode)
     image = image_tensor.detach().cpu().numpy()
     image = np.transpose(image, (1, 2, 0))
-    image = image * IMAGENET_STD + IMAGENET_MEAN
+    image = image * normalization["std"] + normalization["mean"]
     image = np.clip(image, 0.0, 1.0)
     return image
 

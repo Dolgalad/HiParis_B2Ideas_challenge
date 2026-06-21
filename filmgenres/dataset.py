@@ -56,7 +56,7 @@ class PadToSquare:
             fill=self.fill,
         )
 
-def get_image_normalization_constants(mode):
+def get_image_normalization_constants(mode = "resnet"):
     """
     ResNet/Deit and CLIP models use different image normalization constants.
     """
