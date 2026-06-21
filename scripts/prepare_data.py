@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import os
 import pandas as pd
 import re
 import hashlib
+import argparse
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import requests
@@ -16,24 +20,20 @@ from collections import Counter
 
 from sklearn.model_selection import train_test_split
 
-# Important for reproducing the same splits
+from filmgenres.dataset import parse_genres
+
+# Important for reproducing the same splits, default values
 SEED=2026
 
 TRAIN_SPLIT=0.80
 VAL_SPLIT=0.10
 TEST_SPLIT=0.10
 
-DATA_FILE=Path("data/movies.csv")
-ANALYSIS_TABLE_DIR=Path("report/tables")
-ANALYSIS_IMG_DIR=Path("report/figures")
+DATA_FILE="data/movies.csv"
+ANALYSIS_TABLE_DIR="report/tables"
+ANALYSIS_IMG_DIR="report/figures"
 
-ANALYSIS_TABLE_DIR.mkdir(parents=True, exist_ok=True)
-ANALYSIS_IMG_DIR.mkdir(parents=True, exist_ok=True)
-
-DATA_DIR=Path("data")
-
-POSTER_CACHE_DIR = DATA_DIR / "poster_cache"
-POSTER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR="data"
 
 POSTER_TIMEOUT_SECONDS = 30
 POSTER_NUM_WORKERS = max(1, os.cpu_count() or 1)
@@ -41,12 +41,9 @@ POSTER_OVERWRITE = False
 
 """Poster download routines
 """
-def poster_cache_path(url: str, cache_dir: Path = POSTER_CACHE_DIR) -> Path:
+def poster_cache_path(url: str, cache_dir: Path) -> Path:
     """
-    Create a deterministic cache path for a poster URL.
-
-    We keep the original extension when possible, but rely on a hash to avoid
-    filename collisions and unsafe characters.
+    Create a deterministic cache path for a poster URL. Original file extensions are kept but to avoid file collision a hash is used.
     """
     url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
 
@@ -60,9 +57,6 @@ def poster_cache_path(url: str, cache_dir: Path = POSTER_CACHE_DIR) -> Path:
 def download_one_poster(args: tuple[str, str, bool]) -> dict:
     """
     Download one poster image.
-
-    Returns a dictionary so multiprocessing results are easy to collect into a
-    DataFrame later.
     """
     url, output_path_str, overwrite = args
     output_path = Path(output_path_str)
@@ -114,15 +108,12 @@ def download_one_poster(args: tuple[str, str, bool]) -> dict:
 
 def download_posters_to_cache(
     df: pd.DataFrame,
-    cache_dir: Path = POSTER_CACHE_DIR,
+    cache_dir: Path,
     overwrite: bool = False,
     num_workers: int = POSTER_NUM_WORKERS,
 ) -> pd.DataFrame:
     """
     Download all unique poster URLs to cache using multiprocessing.
-
-    This stage only downloads. Validation happens afterwards, once all downloads
-    have completed.
     """
     unique_urls = (
         df["Poster_Url"]
@@ -221,25 +212,17 @@ def validate_cached_posters(download_report: pd.DataFrame) -> pd.DataFrame:
         how="left",
     )
 
-def parse_genres(value: str) -> list[str]:
-    """Parser for genres, genres are comma-separated. This parser returns a list of lowercase and stripped genres
-    """
-    if pd.isna(value):
-        return []
-    value = str(value).strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-        value = value[1:-1].strip()
-
-    genres = [genre.strip().lower() for genre in value.split(",")]
-    genres = [genre for genre in genres if genre]
-
-    return genres
-
 def is_valid_genre_field(value: str) -> bool:
+    """
+    Validation of the genres field
+    """
     genres = parse_genres(value)
     return len(genres) > 0 and all(re.match(r"^[A-Za-z][A-Za-z \-&/]*$", g) for g in genres)
 
 def plot_genre_frequencies(genre_stats_df: pd.DataFrame, output_dir):
+    """
+    Plot the genre frequency bar plot and save to `output_dir`.
+    """
     plot_df = genre_stats_df.sort_values("movies_proportion", ascending=True)
 
     plt.figure(figsize=(8, 5))
@@ -252,6 +235,9 @@ def plot_genre_frequencies(genre_stats_df: pd.DataFrame, output_dir):
     plt.close()
 
 def plot_num_genres_distribution(num_genres_stats_df: pd.DataFrame, output_dir):
+    """
+    Plot bar plot of the distribution of number of genres per film as save to `output_dir`.
+    """
     plot_df = num_genres_stats_df.sort_values("proportion", ascending=True)
 
     plt.figure(figsize=(8, 5))
@@ -264,6 +250,9 @@ def plot_num_genres_distribution(num_genres_stats_df: pd.DataFrame, output_dir):
     plt.close()
 
 def compute_genre_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute genre statistics like overall proportion of movies with that genre or proportion of labels equal to that genre.
+    """
     genre_counter = Counter(
         genre for genres in df["Genre"].apply(parse_genres) for genre in genres
     )
@@ -292,7 +281,9 @@ def compute_genre_stats(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 def plot_genre_frequencies_by_split(split_genre_stats_df: pd.DataFrame, output_path: Path):
-    """Grouped horizontal bar plot of genre proportions by split."""
+    """
+    Grouped horizontal bar plot of genre proportions by split.
+    """
     pivot_df = (
         split_genre_stats_df
         .pivot(index="genre", columns="split", values="movies_proportion")
@@ -323,6 +314,9 @@ def plot_genre_frequencies_by_split(split_genre_stats_df: pd.DataFrame, output_p
     plt.close()
 
 def compute_num_genres_distribution(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute statistics of genre distribution.
+    """
     stats = (
         df["num_genres"]
         .value_counts()
@@ -337,7 +331,9 @@ def plot_num_genres_distribution_by_split(
     split_num_genres_stats_df: pd.DataFrame,
     output_path: Path,
 ):
-    """Grouped bar plot of the number of genres per movie by split."""
+    """
+    Grouped bar plot of the number of genres per movie by split.
+    """
     pivot_df = (
         split_num_genres_stats_df
         .pivot(index="num_genres", columns="split", values="proportion")
@@ -362,10 +358,129 @@ def plot_num_genres_distribution_by_split(
     plt.savefig(output_path, dpi=300)
     plt.close()
 
+def parse_args():
+    """
+    Parse command line arguments
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--data",
+        type=str,
+        required=False,
+        default=DATA_FILE,
+        help="Path to movies CSV file (default: {DATA_FILE}).",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        dest="output_dir",
+        required=False,
+        default=OUTPUT_DIR,
+        help="Directory in which are saved the poster images and split files (default: {OUTPUT_DIR}).",
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        required=False,
+        default=SEED,
+        help=f"Seed value (default: {SEED}).",
+    )
+    parser.add_argument(
+        "--train-split",
+        type=float,
+        dest="train_split",
+        required=False,
+        default=TRAIN_SPLIT,
+        help=f"Train split value (default: {TRAIN_SPLIT}).",
+    )
+    parser.add_argument(
+        "--val-split",
+        type=float,
+        dest="val_split",
+        required=False,
+        default=VAL_SPLIT,
+        help=f"Validation split value (default: {VAL_SPLIT}).",
+    )
+    parser.add_argument(
+        "--test-split",
+        type=float,
+        dest="test_split",
+        required=False,
+        default=TEST_SPLIT,
+        help=f"Test split value (default: {TEST_SPLIT}).",
+    )
+
+    parser.add_argument(
+        "--output-table-dir",
+        type=str,
+        dest="output_table_dir",
+        required=False,
+        default=ANALYSIS_TABLE_DIR,
+        help=f"Output directory for the dataset analysis tables (default: {ANALYSIS_TABLE_DIR})."
+    )
+
+    parser.add_argument(
+        "--output-img-dir",
+        type=str,
+        dest="output_img_dir",
+        required=False,
+        default=ANALYSIS_IMG_DIR,
+        help=f"Output directory for the dataset analysis figures (default: {ANALYSIS_IMG_DIR})."
+    )
+
+    parser.add_argument(
+        "--poster-timeout",
+        type=int,
+        dest="poster_timeout",
+        required=False,
+        default=POSTER_TIMEOUT_SECONDS,
+        help=f"Poster download timeout (default: {POSTER_TIMEOUT_SECONDS})."
+    )
+
+    parser.add_argument(
+        "--poster-workers",
+        type=int,
+        dest="poster_workers",
+        required=False,
+        default=POSTER_NUM_WORKERS,
+        help=f"Poster download workers (default: {POSTER_NUM_WORKERS})."
+    )
+
+    parser.add_argument(
+        "--poster-overwrite",
+        action="store_true",
+        dest="poster_overwrite",
+        required=False,
+        default=POSTER_OVERWRITE,
+        help=f"Overwrite posters in output directory (default: {POSTER_OVERWRITE})."
+    )
+
+    return parser.parse_args()
+
+def validate_args(args: dict[str, Any]):
+    if args.train_split + args.val_split + args.test_split != 1.0:
+        raise ValueError(f"Expected train/val/test split values to sum to 1 got {sum(args.train_split, args.val_split, args.test_split)}")
+
+    # directories and paths
+    args.data = Path(args.data)
+    args.output_dir = Path(args.output_dir)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.output_table_dir = Path(args.output_table_dir)
+    args.output_table_dir.mkdir(parents=True, exist_ok=True)
+    args.output_img_dir = Path(args.output_img_dir)
+    args.output_img_dir.mkdir(parents=True, exist_ok=True)
+    args.poster_cache_dir = args.output_dir / "poster_cache"
+    args.poster_cache_dir.mkdir(parents=True, exist_ok=True)
+
+
 if __name__=="__main__":
+    args = parse_args()
+    validate_args(args)
     print("Prepare and Analyse the data")
 
-    df = pd.read_csv(DATA_FILE, header=0, engine="python")
+    df = pd.read_csv(args.data, header=0, engine="python")
 
     # check validity of each entry, should have a valid date, genre as a quoted comma separated list, and a poster url
     valid_date = df["Release_Date"].astype(str).str.match(r"^\d{4}-\d{2}-\d{2}$", na=False)
@@ -395,9 +510,9 @@ if __name__=="__main__":
     print("Downloading poster images to cache")
     download_report = download_posters_to_cache(
             df,
-            cache_dir=POSTER_CACHE_DIR,
-            overwrite=POSTER_OVERWRITE,
-            num_workers=POSTER_NUM_WORKERS,
+            cache_dir=args.poster_cache_dir,
+            overwrite=args.poster_overwrite,
+            num_workers=args.poster_workers,
     )
 
     # check that the cached poster images are valid after download is complete
@@ -405,7 +520,7 @@ if __name__=="__main__":
     poster_report = validate_cached_posters(download_report)
 
     poster_report.to_csv(
-        ANALYSIS_TABLE_DIR / "poster_download_report.csv",
+        args.output_table_dir / "poster_download_report.csv",
         index=False,
     )
 
@@ -460,22 +575,22 @@ if __name__=="__main__":
     print(f"Average number of genres per movies: {num_total_labels / num_movies:.2f}")
 
     print(genre_stats)
-    genre_stats.to_csv(ANALYSIS_TABLE_DIR / "genre_frequencies.csv", index=False)
-    plot_genre_frequencies(genre_stats, ANALYSIS_IMG_DIR / "genre_frequencies.png")
+    genre_stats.to_csv(args.output_table_dir / "genre_frequencies.csv", index=False)
+    plot_genre_frequencies(genre_stats, args.output_img_dir / "genre_frequencies.png")
 
     # Print/plot number of genres per film
     num_genres_stats = (df["num_genres"].value_counts().sort_index().rename_axis("num_genres").reset_index(name="count"))
     num_genres_stats["proportion"] = num_genres_stats["count"] / len(df)
 
     print(num_genres_stats)
-    num_genres_stats.to_csv(ANALYSIS_TABLE_DIR / "num_genres_distribution.csv", index=False)
-    plot_num_genres_distribution(num_genres_stats, ANALYSIS_IMG_DIR / "num_genres_distribution.png")
+    num_genres_stats.to_csv(args.output_table_dir / "num_genres_distribution.csv", index=False)
+    plot_num_genres_distribution(num_genres_stats, args.output_img_dir / "num_genres_distribution.png")
 
     # create the train/val/test splits and save the corresponding rows to data/movies_{train,val,test}.csv
 
-    train_df, temp_df = train_test_split(df, train_size=TRAIN_SPLIT, random_state=SEED, shuffle=True)
-    relative_val_size = VAL_SPLIT / (VAL_SPLIT + TEST_SPLIT)
-    val_df, test_df = train_test_split(temp_df, train_size=relative_val_size, random_state=SEED, shuffle=True)
+    train_df, temp_df = train_test_split(df, train_size=args.train_split, random_state=args.seed, shuffle=True)
+    relative_val_size = args.val_split / (args.val_split + args.test_split)
+    val_df, test_df = train_test_split(temp_df, train_size=relative_val_size, random_state=args.seed, shuffle=True)
     train_df = train_df.reset_index(drop=True)
     val_df = val_df.reset_index(drop=True)
     test_df = test_df.reset_index(drop=True)
@@ -485,9 +600,9 @@ if __name__=="__main__":
     print(f"Test split: {len(test_df)}")
 
     # save splits
-    train_df.to_csv(DATA_DIR / "movies_train.csv", index=False)
-    val_df.to_csv(DATA_DIR / "movies_val.csv", index=False)
-    test_df.to_csv(DATA_DIR / "movies_test.csv", index=False)
+    train_df.to_csv(args.output_dir / "movies_train.csv", index=False)
+    val_df.to_csv(args.output_dir / "movies_val.csv", index=False)
+    test_df.to_csv(args.output_dir / "movies_test.csv", index=False)
 
     # check that splits have similar genre distribution to the full dataset
     split_stats = []
@@ -504,13 +619,13 @@ if __name__=="__main__":
     split_genre_stats = pd.concat(split_stats, ignore_index=True)
     
     split_genre_stats.to_csv(
-        ANALYSIS_TABLE_DIR / "genre_frequencies_by_split.csv",
+        args.output_table_dir / "genre_frequencies_by_split.csv",
         index=False,
     )
 
     plot_genre_frequencies_by_split(
         split_genre_stats,
-        ANALYSIS_IMG_DIR / "genre_frequencies_by_split.png",
+        args.output_img_dir / "genre_frequencies_by_split.png",
     )
 
     split_num_genres_stats = []
@@ -530,11 +645,11 @@ if __name__=="__main__":
     )
     
     split_num_genres_stats.to_csv(
-        ANALYSIS_TABLE_DIR / "num_genres_distribution_by_split.csv",
+        args.output_table_dir / "num_genres_distribution_by_split.csv",
         index=False,
     )
     
     plot_num_genres_distribution_by_split(
         split_num_genres_stats,
-        ANALYSIS_IMG_DIR / "num_genres_distribution_by_split.png",
+        args.output_img_dir / "num_genres_distribution_by_split.png",
     )
