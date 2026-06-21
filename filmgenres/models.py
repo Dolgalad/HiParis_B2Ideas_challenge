@@ -8,7 +8,14 @@ from torchvision import models
 
 from .prediction_head import build_prediction_head
 
+"""
+Pretrained models with a custom prediction head for film genre multilabel classification
+"""
+
 class ResNetMultiLabelClassifier(nn.Module):
+    """
+    ResNet model implementation from He et. al. 2016 paper "Deep Residual Learning for Image Recognition"
+    """
     def __init__(
         self,
         num_classes: int,
@@ -52,10 +59,8 @@ class ResNetMultiLabelClassifier(nn.Module):
 
 class CLIPPosterClassifier(nn.Module):
     """
-    CLIP image encoder + multi-label genre classification head.
-
-    This uses CLIP's visual encoder only. It should be useful for posters because
-    CLIP has strong image-text pretraining, but this is still not the same as OCR.
+    CLIP image encoder from Radford et. al. 2021 paper "Learning transferable visual models from natural language supervision". Since CLIP models 
+    are trained to align images and text, they may be better able to exploit the semantic cues present in movie posters.
     """
 
     def __init__(
@@ -107,11 +112,8 @@ class CLIPPosterClassifier(nn.Module):
 
 class TimmVisionTransformerClassifier(nn.Module):
     """
-    Supervised ImageNet-pretrained visual transformer + multilabel prediction head.
-
-    This is useful as a comparison against CLIP:
-    - DeiT/ViT uses supervised visual pretraining.
-    - CLIP uses image-text contrastive pretraining.
+    Supervised ImageNet-pretrained visual transformer + multilabel prediction head. Base on the 2021 work of Touvron et. al. 
+    "Training data-efficient image transformers & distillation through attention"
     """
 
     def __init__(
@@ -168,6 +170,9 @@ class TimmVisionTransformerClassifier(nn.Module):
 
 
 def build_model(config: dict[str, Any], num_classes: int) -> nn.Module:
+    """
+    Build model based upon configuration. 
+    """
     model_config = config["model"]
     model_name = model_config["name"]
     prediction_head_config = model_config.get("prediction_head", None)

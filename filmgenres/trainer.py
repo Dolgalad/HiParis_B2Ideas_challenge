@@ -1,3 +1,6 @@
+"""
+Training routines for training the film genre classifier
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +16,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def move_batch_to_device(batch: dict, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Utility function used to move batch and target to training device
+    """
     images = batch["image"].to(device, non_blocking=True)
     targets = batch["target"].to(device, non_blocking=True)
     return images, targets
@@ -24,6 +30,9 @@ def compute_multilabel_metrics(
     targets: torch.Tensor,
     threshold: float = 0.5,
 ) -> dict[str, float]:
+    """
+    Compute the metrics evaluating the alignment between predicted values and the true labels.
+    """
     probs = torch.sigmoid(logits).detach().cpu().numpy()
     y_true = targets.detach().cpu().numpy()
     y_pred = (probs >= threshold).astype(int)
@@ -42,6 +51,9 @@ def compute_multilabel_metrics(
 
 
 class Trainer:
+    """
+    The trainer supports multi stage training as defined in the YAML config files, per epoch metric are saved to CSV as well as tensorboard logs.
+    """
     def __init__(
         self,
         model: nn.Module,
@@ -104,6 +116,9 @@ class Trainer:
         stage_index: int,
         stage_name: str,
     ) -> str:
+        """
+        Stage name prefix for the progress bar.
+        """
         safe_stage_name = "".join(
             char if char.isalnum() or char in ["_", "-"] else "_"
             for char in stage_name
@@ -112,6 +127,9 @@ class Trainer:
         return f"stage_{stage_index}_{safe_stage_name}"
 
     def _compute_pos_weight(self) -> torch.Tensor:
+        """
+        Compute class weights, these weights are used if `use_pos_weight=True` in the configuration. Weights are computed over the training set only.
+        """
         num_classes = len(self.genre_to_idx)
         positive_counts = torch.zeros(num_classes, dtype=torch.float32)
     
@@ -210,6 +228,9 @@ class Trainer:
         parameter_name: str,
         classifier_patterns: list[str],
     ) -> bool:
+        """
+        Returns model parameters of the classifier, used for training only the classification head.
+        """
         return any(pattern in parameter_name for pattern in classifier_patterns)
     
     
@@ -251,11 +272,17 @@ class Trainer:
     
     
     def _count_trainable_parameters(self) -> tuple[int, int]:
+        """
+        Get number of trainable parameters
+        """
         trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in self.model.parameters())
         return trainable, total
 
     def _build_optimizer(self, stage: dict[str, Any]):
+        """
+        Build the optimizer for training stage `stage`.
+        """
         lr = stage["lr"]
         classifier_lr = stage.get("classifier_lr", None)
         weight_decay = stage.get("weight_decay", 0.0)
@@ -319,6 +346,9 @@ class Trainer:
         )
 
     def _build_scheduler(self, stage: dict[str, Any]):
+        """
+        Build learning rate scheduler for training stage `stage`.
+        """
         scheduler_name = stage.get("scheduler", "none")
     
         if scheduler_name is None or scheduler_name == "none":
@@ -344,6 +374,9 @@ class Trainer:
             stage_name: str,
             stage_epoch,
     ) -> dict[str, float]:
+        """
+        Train model for single epoch.
+        """
         self.model.train()
 
         total_loss = 0.0
@@ -412,6 +445,9 @@ class Trainer:
             stage_name: str,
             stage_epoch: int,
     ) -> dict[str, float]:
+        """
+        Validation pass.
+        """
         self.model.eval()
 
         total_loss = 0.0
@@ -457,6 +493,9 @@ class Trainer:
         stage_name: str,
         stage_epoch: int,
     ) -> None:
+        """
+        Save model checkpoint.
+        """
         checkpoint = {
             "epoch": epoch,
             "stage_index": stage_index,
@@ -475,6 +514,9 @@ class Trainer:
         torch.save(checkpoint, path)
 
     def fit(self) -> None:
+        """
+        Run full training.
+        """
         global_epoch = 0
     
         save_best_metric = self.config["training"].get("save_best_metric", "loss")
@@ -631,6 +673,9 @@ class Trainer:
     
         self.writer.close()
     def _get_lrs(self) -> dict[str, float]:
+        """
+        Get learning rate values from optimizer.
+        """
         lrs = {}
     
         for idx, param_group in enumerate(self.optimizer.param_groups):
@@ -651,6 +696,9 @@ class Trainer:
         is_best: bool,
         is_stage_best: bool,
     ) -> None:
+        """
+        Append new training history row to output CSV file.
+        """
         lrs = self._get_lrs()
     
         row = {

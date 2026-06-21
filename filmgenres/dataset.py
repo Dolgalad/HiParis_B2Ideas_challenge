@@ -8,11 +8,19 @@ from PIL import Image, ImageOps
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+# image normalization constants used by ResNet/DeiT and CLIP
+RESNET_DEIT_MEAN = [0.485, 0.456, 0.406]
+RESNET_DEIT_STD = [0.229, 0.224, 0.225]
+CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
+CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
+
+
+
 
 def parse_genres(value: str) -> list[str]:
     """
     Parse comma-separated genre labels.
-    Should match the logic used in prepare_data.py.
+    Matches the logic used in the data preparation script.
     """
     if pd.isna(value):
         return []
@@ -31,9 +39,6 @@ def parse_genres(value: str) -> list[str]:
 class PadToSquare:
     """
     Pad image to square without distorting aspect ratio.
-
-    This is usually better for movie posters than center cropping because posters
-    are tall and important content may appear near the top or bottom.
     """
 
     def __init__(self, fill: int = 0):
@@ -54,12 +59,26 @@ class PadToSquare:
             fill=self.fill,
         )
 
+def get_image_normalization_constants(mode):
+    """
+    ResNet/Deit and CLIP models use different image normalization constants.
+    """
+    if mode=="resnet" or mode=="deit":
+        return {"mean": RESNET_DEIT_IMG_NORM_MEAN, "std": RESNET_DEIT_IMG_NORM_STD}
+    if mode=="clip":
+        return {"mean": CLIP_IMG_NORM_MEAN, "std": CLIP_IMG_NORM_STD}
+    raise ValueError(f"Unrecognized image normalization mode {mode}")
 
 def get_image_transform(
     split: str,
     image_size: int = 224,
     include_base: bool = True,
+    image_normalization_mode: str = "resnet"
 ) -> transforms.Compose:
+    """
+    Get list of image transformations applied by the dataloader. Base transformations are applied before caching the image to disk for faster
+    batch loading. Augmentations are only applied during training. 
+    """
     base_transforms = []
 
     if include_base:
@@ -88,8 +107,7 @@ def get_image_transform(
     tensor_transforms = [
         transforms.ToTensor(),
         transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
+            **get_image_normalization_constants(image_normalization_mode)
         ),
     ]
 
@@ -98,6 +116,10 @@ def get_image_transform(
     )
 
 class MoviePosterDataset(Dataset):
+    """
+    Dataset of movie posters. Provides access to individual poster images and corresponding genre labels. Images are preprocessed and can be cached before
+    applying train augmentations to speed up batch loading during training and testing.
+    """
     def __init__(
         self,
         csv_path: str | Path,
@@ -110,6 +132,7 @@ class MoviePosterDataset(Dataset):
         cache_base_images: bool = False,
         image_size: int = 224,
     ):
+        # load split data from CSV file
         self.csv_path = Path(csv_path)
         self.df = pd.read_csv(self.csv_path)
 
@@ -142,7 +165,8 @@ class MoviePosterDataset(Dataset):
             )
 
         self.df[genre_column] = self.df[genre_column].fillna("")
-
+        
+        # map genre labels to indexes and indexes to labels
         if genre_to_idx is None:
             genres = sorted(
                 {
@@ -163,6 +187,9 @@ class MoviePosterDataset(Dataset):
         return len(self.df)
 
     def encode_genres(self, genre_value: str) -> torch.Tensor:
+        """
+        Encode genre as a one-hot vector.
+        """
         target = torch.zeros(self.num_classes, dtype=torch.float32)
 
         for genre in parse_genres(genre_value):
@@ -172,10 +199,16 @@ class MoviePosterDataset(Dataset):
         return target
 
     def _cache_path_for_image(self, image_path: Path) -> Path:
+        """
+        Returns path to the cached preprocessed image.
+        """
         key = hashlib.md5(str(image_path.resolve()).encode("utf-8")).hexdigest()
         return self.cache_dir / f"{key}_{self.image_size}.jpg"
 
     def _load_base_image(self, image_path: Path) -> Image.Image:
+        """
+        Return the base image corresponding to the "poster_url" field in the original CSV entry.
+        """
         if not self.cache_base_images or self.cache_dir is None:
             image = Image.open(image_path).convert("RGB")
             return self.base_transform(image)
@@ -192,6 +225,9 @@ class MoviePosterDataset(Dataset):
         return image
 
     def __getitem__(self, idx: int) -> dict:
+        """
+        Get dataset item by index
+        """
         row = self.df.iloc[idx]
         image_path = Path(row[self.poster_path_column])
 

@@ -7,9 +7,6 @@ import torch.nn as nn
 class MLPHead(nn.Module):
     """
     Configurable multilayer prediction head for multilabel classification.
-
-    The output is raw logits. Do not apply sigmoid here.
-    BCEWithLogitsLoss expects logits directly.
     """
 
     def __init__(
@@ -68,9 +65,7 @@ def build_prediction_head(
     """
     Build a prediction head from config.
 
-    Backward compatible default:
-    If no head_config is provided, this returns a simple Dropout -> Linear head,
-    matching the previous behavior.
+    Backward compatible default: If no head_config is provided, this returns a simple Dropout -> Linear head, matching the previous behavior.
     """
     head_config = head_config or {}
 

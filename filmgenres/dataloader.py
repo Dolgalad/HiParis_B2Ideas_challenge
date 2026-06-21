@@ -33,6 +33,10 @@ def create_dataloaders(
     num_workers: int = 4,
     use_cache: bool = True,
 ):
+    """
+    Create the train, validation and testing dataloaders. The `data_dir` argument is expected to point to a directory containing the split files 
+    `movies_{train,val,test}.csv`. 
+    """
     data_dir = Path(data_dir)
 
     train_csv = data_dir / "movies_train.csv"
@@ -110,18 +114,3 @@ def create_dataloaders(
     )
 
     return train_loader, val_loader, test_loader, genre_to_idx
-
-if __name__ == "__main__":
-    train_loader, val_loader, test_loader, genre_to_idx = create_dataloaders(
-        data_dir="data",
-        image_size=224,
-        batch_size=8,
-        num_workers=2,
-    )
-
-    batch = next(iter(train_loader))
-
-    print("Genres:", genre_to_idx)
-    print("Image batch shape:", batch["image"].shape)
-    print("Target batch shape:", batch["target"].shape)
-    print("Titles:", batch["title"][:3])
