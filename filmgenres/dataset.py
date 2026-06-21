@@ -9,13 +9,10 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
 # image normalization constants used by ResNet/DeiT and CLIP
-RESNET_DEIT_MEAN = [0.485, 0.456, 0.406]
-RESNET_DEIT_STD = [0.229, 0.224, 0.225]
-CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
-CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
-
-
-
+RESNET_DEIT_IMG_NORM_MEAN = [0.485, 0.456, 0.406]
+RESNET_DEIT_IMG_NORM_STD = [0.229, 0.224, 0.225]
+CLIP_IMG_NORM_MEAN = [0.48145466, 0.4578275, 0.40821073]
+CLIP_IMG_NORM_STD = [0.26862954, 0.26130258, 0.27577711]
 
 def parse_genres(value: str) -> list[str]:
     """

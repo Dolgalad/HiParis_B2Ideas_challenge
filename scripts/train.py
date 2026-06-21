@@ -8,9 +8,9 @@ import numpy as np
 import torch
 import yaml
 
-from src.dataloader import create_dataloaders
-from src.models import build_model
-from src.trainer import Trainer
+from filmgenres.dataloader import create_dataloaders
+from filmgenres.models import build_model
+from filmgenres.trainer import Trainer
 
 
 def set_seed(seed: int) -> None:

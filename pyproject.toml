@@ -1,0 +1,8 @@
+[project]
+name = "filmgenres"
+version = "0.1.0"
+description = "Multi-label movie genre prediction from poster images"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["filmgenres"]

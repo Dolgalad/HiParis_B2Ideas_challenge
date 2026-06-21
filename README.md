@@ -10,6 +10,8 @@ Create the conda environment with
 ```bash
 conda env create -f environment.yml
 conda activate hiparis
+# install the package
+pip install -e .
 ```
 
 ## Data preparation
@@ -26,3 +28,21 @@ pyton scripts/prepare_data.py
 <p align="center">
   <em>Left: genre frequency distribution. Right: label count distribution.</em>
 </p>
+
+<p align="center">
+  <img src="report/figures/genre_frequencies_by_split.png" width="45%">
+  <img src="report/figures/num_genres_distribution_by_split.png" width="45%">
+</p>
+
+<p align="center">
+  <em>Left: split genre frequency distribution. Right: split label count distribution.</em>
+</p>
+
+## Data preparation
+To launch all training runs 
+```bash
+./run_training.sh
+# or individual configuration files
+python scripts/train.sh --config <config_file>
+```
+
