@@ -4,6 +4,15 @@ This repository contains my solution for the Hi! PARIS / B2Ideas challenge on mu
 
 The project compares several pretrained vision backbones, including ResNet, CLIP, and DeiT, fine-tuned for multi-label classification. It includes training scripts, configuration files, evaluation utilities, and visualizations used to analyze model predictions.
 
+<p align="center">
+  <img src="report/figures/test_prediction_grid.png" width="95%">
+</p>
+
+<p align="center">
+  <em>Predicted film genres.</em>
+</p>
+
+
 ## Environment
 Create the conda environment with
 
@@ -50,3 +59,21 @@ And generate plot and result tables with
 ```bash
 ./generate_figures.sh
 ```
+
+<p align="center">
+  <img src="report/figures/train_val_losses.png" width="45%">
+  <img src="report/figures/val_map.png" width="45%">
+</p>
+
+<p align="center">
+  <em>Left: train (solid) and validation (dashed) loss values. Right: split label count distribution.</em>
+</p>
+
+<p align="center">
+  <img src="report/figures/per_genre_f1.png" width="95%">
+</p>
+
+<p align="center">
+  <em>Per-genre F1 score for trained models.</em>
+</p>
+
