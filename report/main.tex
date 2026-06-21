@@ -8,6 +8,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{hyperref}
 \usepackage[french]{babel}
+\usepackage{xcolor}
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{2pt}
@@ -18,6 +19,8 @@
 \setlength{\belowcaptionskip}{0pt}
 
 \newcommand{\R}{\mathbb{R}}
+\newcommand{\LB}[1]{\mathbf{#1}}
+\newcommand{\TB}[1]{\textcolor{blue}{\mathbf{#1}}}
 
 \title{\vspace{-1.2cm}Prédiction multi-label de genres de films à partir de posters\\[0.05em]
 \small Hi! PARIS -- Challenge B2Ideas}
@@ -73,27 +76,37 @@ Enfin, la mAP est calculée à partir des scores continus, sans seuillage, en mo
 & Epoch & Micro-F1 $\uparrow$ & Macro-F1 $\uparrow$ & mAP $\uparrow$
 & Epoch & Micro-F1 $\uparrow$ & Macro-F1 $\uparrow$ & mAP $\uparrow$ \\
 \midrule
-ResNet-50 & $30$ & $0.4602$          & $0.3129$          & $0.3065$          & $49$ & $0.4778$          & $0.3443$          & $0.3466$ \\
-CLIP ViT-B/32   & $23$ & $\mathbf{0.5626}$ & $\mathbf{0.4104}$ & $\mathbf{0.4171}$ & $45$ & $\mathbf{0.5747}$ & $\mathbf{0.4167}$ & $\mathbf{0.4353}$ \\
-DeiT-Small   & $18$ & $0.5021$          & $0.3838$          & $0.3870$          & $37$ & $0.5106$          & $0.3830$          & $0.3804$ \\
+ResNet-50       & $30$ & $0.4602$ & $0.3129$ & $0.3065$ & $49$ & $0.4774$ & $0.3440$ & $0.3466$ \\
+CLIP ViT-B/32   & $23$ & $\LB{0.5632}$ & $\LB{0.4130}$ & $\LB{0.4203}$ & $45$ & $\TB{0.5720}$ & $\TB{0.4138}$ & $\TB{0.4385}$ \\
+DeiT-Small      & $18$ &  $0.5021$ & $0.3838$ & $0.3870$ & $37$ & $0.5106$ & $0.3830$ & $0.3804$ \\
 \bottomrule
 \end{tabular}}
 \caption{Comparaison des performances sur le jeu de test selon les étapes d'entraînement.}
 \label{tab:stage-results}
 \end{table}
 
-Les résultats de la Table~\ref{tab:stage-results} montrent que CLIP obtient les meilleures performances, avec un micro-F1 de $0.5747$, un macro-F1 de $0.4167$ et une mAP de $0.4353$ après fine-tuning.
+Les résultats de la Table~\ref{tab:stage-results} montrent que CLIP obtient les meilleures performances, avec un micro-F1 de $0.5720$, un macro-F1 de $0.4138$ et une mAP de $0.4385$ après fine-tuning.
 Cette supériorité est cohérente avec son pré-entraînement image-texte, particulièrement adapté aux posters de films qui combinent des indices visuels, typographiques et sémantiques.
 ResNet bénéficie également du fine-tuning, tandis que DeiT progresse peu après la première étape, ce qui suggère une adaptation moins efficace au dataset ou un risque de sur-apprentissage.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{figures/test_predictions_grid.png}
+\includegraphics[width=\linewidth,height=0.2\textheight]{figures/test_predictions_grid.png}
 \caption{Exemples qualitatifs de prédictions sur le jeu de test. La première ligne montre les posters, la seconde les vrais genres, et les lignes suivantes les $6$ genres les plus probables.}
 \label{fig:prediction_test}
 \end{figure}
 
 La Figure~\ref{fig:prediction_test} illustre qualitativement le comportement des modèles. Les prédictions correctes montrent que les modèles capturent certains motifs visuels associés aux genres, par exemple les codes graphiques propres à l'action, à l'animation ou à l'horreur. Les erreurs restent cependant fréquentes lorsque les genres sont sémantiquement proches ou souvent co-occurrents, comme \emph{drama}, \emph{romance}, \emph{thriller} et \emph{crime}. Cette difficulté est naturelle dans un cadre multi-label : un même poster peut contenir des indices correspondant à plusieurs genres, et certains labels sont difficiles à distinguer à partir de l'image seule.
+
+La Figure~\ref{fig:per_genre_f1} détaille les performances par genre : CLIP domine sur la plupart des classes, en particulier les genres visuellement marqués comme \textit{animation}, \textit{family} ou \textit{horror}, tandis que les scores restent faibles pour les classes rares ou ambiguës comme \textit{documentary}, \textit{music} et \textit{tv movie}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[height=0.18\textheight,width=\linewidth]{figures/per_genre_f1.png}
+    \vspace{-0.15em}
+    \caption{F1-score par genre pour les trois modèles évalués sur le jeu de test.}
+    \label{fig:per_genre_f1}
+\end{figure}
 
 \section{Conclusion}
 
